@@ -15,16 +15,21 @@
 
 namespace
 {
+  // Static fallback used when malloc fails; the error channel must never
+  // alias success (NULL). Never passed to free().
+  const char kErrorAllocFailed[] = "C++ exception (message lost: allocation failure)";
+
   // Returns a malloc'd copy of msg so it can cross the cgo boundary and be
   // freed by Cv2_FreeString.
   char *copy_error(const char *msg)
   {
     const size_t len = std::strlen(msg) + 1;
     char *out = static_cast<char *>(std::malloc(len));
-    if (out != nullptr)
+    if (out == nullptr)
     {
-      std::memcpy(out, msg, len);
+      return const_cast<char *>(kErrorAllocFailed);
     }
+    std::memcpy(out, msg, len);
     return out;
   }
 
@@ -47,16 +52,32 @@ namespace
 
 Cv2Mat Cv2_Mat_New(void)
 {
-  return new cv::Mat();
+  try
+  {
+    return new cv::Mat();
+  }
+  catch (...)
+  {
+    // No error channel in this signature; NULL signals failure to Go.
+    return nullptr;
+  }
 }
 
 Cv2Mat Cv2_Mat_NewFromBytes(int rows, int cols, int type, Cv2ByteArray buf)
 {
-  // Wrap the caller's buffer without copying, then clone so the returned Mat
-  // owns its pixels. The Go garbage collector is therefore free to move or
-  // collect the source slice after this call returns.
-  const cv::Mat borrowed(rows, cols, type, buf.data);
-  return new cv::Mat(borrowed.clone());
+  try
+  {
+    // Wrap the caller's buffer without copying, then clone so the returned
+    // Mat owns its pixels. The Go garbage collector is therefore free to
+    // move or collect the source slice after this call returns. The Go side
+    // guarantees buf holds exactly rows*cols*elemSize bytes.
+    const cv::Mat borrowed(rows, cols, type, buf.data);
+    return new cv::Mat(borrowed.clone());
+  }
+  catch (...)
+  {
+    return nullptr;
+  }
 }
 
 void Cv2_Mat_Close(Cv2Mat m)
@@ -66,6 +87,12 @@ void Cv2_Mat_Close(Cv2Mat m)
 
 char *Cv2_MatchTemplate(Cv2Mat image, Cv2Mat templ, Cv2Mat result, int method, Cv2Mat mask)
 {
+  // A NULL dereference is a hardware fault, not a C++ exception; check
+  // before the try block can pretend to help.
+  if (image == nullptr || templ == nullptr || result == nullptr || mask == nullptr)
+  {
+    return copy_error("null Mat handle");
+  }
   try
   {
     cv::matchTemplate(*image, *templ, *result, method, *mask);
@@ -79,6 +106,10 @@ char *Cv2_MatchTemplate(Cv2Mat image, Cv2Mat templ, Cv2Mat result, int method, C
 
 char *Cv2_MinMaxLoc(Cv2Mat m, double *minVal, double *maxVal, Cv2Point *minLoc, Cv2Point *maxLoc)
 {
+  if (m == nullptr)
+  {
+    return copy_error("null Mat handle");
+  }
   try
   {
     cv::Point cMinLoc;
@@ -99,5 +130,8 @@ char *Cv2_MinMaxLoc(Cv2Mat m, double *minVal, double *maxVal, Cv2Point *minLoc, 
 
 void Cv2_FreeString(char *s)
 {
-  std::free(s);
+  if (s != kErrorAllocFailed)
+  {
+    std::free(s);
+  }
 }

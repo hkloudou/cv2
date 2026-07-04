@@ -31,4 +31,8 @@ jobs:
           go-version-file: go.mod
           cache: false
       - name: Release
-        run: build/release.sh '${{ inputs.version }}'
+        env:
+          # Passed via env, not string interpolation, so a crafted input
+          # cannot inject shell syntax into the run block.
+          VERSION: ${{ inputs.version }}
+        run: build/release.sh "$VERSION"

@@ -19,22 +19,25 @@ module_path=github.com/hkloudou/cv2/libs/$module_dir_name
 out_libs=$CV2_OUT_DIR/libs/$module_dir_name
 
 pick_one() {
-  # pick_one <what> <candidates...> - fail loudly unless exactly one match.
-  local what=$1
-  shift
-  if [ "$#" -eq 0 ] || [ ! -e "$1" ]; then
+  # pick_one <what> <newline-separated candidates> - fail loudly unless
+  # exactly one match. Candidates are one path per line, so paths with
+  # spaces survive intact.
+  local what=$1 matches=$2 count
+  if [ -z "$matches" ]; then
     echo "error: no $what found" >&2
     exit 1
   fi
-  if [ "$#" -gt 1 ]; then
-    echo "error: multiple candidates for $what: $*" >&2
+  count=$(printf '%s\n' "$matches" | grep -c .)
+  if [ "$count" -gt 1 ]; then
+    echo "error: multiple candidates for $what:" >&2
+    printf '%s\n' "$matches" >&2
     exit 1
   fi
-  printf '%s\n' "$1"
+  printf '%s\n' "$matches"
 }
 
-core_lib=$(pick_one "libopencv_core" $(find "$CV2_DIST_DIR" -name 'libopencv_core*.a' | LC_ALL=C sort))
-imgproc_lib=$(pick_one "libopencv_imgproc" $(find "$CV2_DIST_DIR" -name 'libopencv_imgproc*.a' | LC_ALL=C sort))
+core_lib=$(pick_one "libopencv_core" "$(find "$CV2_DIST_DIR" -name 'libopencv_core*.a' | LC_ALL=C sort)")
+imgproc_lib=$(pick_one "libopencv_imgproc" "$(find "$CV2_DIST_DIR" -name 'libopencv_imgproc*.a' | LC_ALL=C sort)")
 # The dist tree may hold identical zlib copies in more than one place
 # (3rdparty-lib/ plus the platform's staticlib dir); any one of them works.
 zlib_lib=$(find "$CV2_DIST_DIR" -name 'libzlib.a' | LC_ALL=C sort | head -1)

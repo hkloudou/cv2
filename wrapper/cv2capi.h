@@ -25,11 +25,13 @@ extern "C"
 typedef void *Cv2Mat;
 #endif
 
-  // Creates a new empty Mat.
+  // Creates a new empty Mat. Returns NULL on allocation failure.
   Cv2Mat Cv2_Mat_New(void);
 
   // Creates a Mat that owns a private copy of buf. The caller keeps
-  // ownership of buf and may free it as soon as the call returns.
+  // ownership of buf and may free it as soon as the call returns. buf must
+  // hold exactly rows*cols*elemSize(type) bytes. Returns NULL if OpenCV
+  // rejects the parameters or allocation fails.
   Cv2Mat Cv2_Mat_NewFromBytes(int rows, int cols, int type, Cv2ByteArray buf);
 
   // Releases a Mat created by Cv2_Mat_New or Cv2_Mat_NewFromBytes.

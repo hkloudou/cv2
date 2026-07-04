@@ -37,6 +37,14 @@ import (
 // ErrEmptyByteSlice is returned when a Mat is created from an empty byte slice.
 var ErrEmptyByteSlice = errors.New("cv2: empty byte slice")
 
+// ErrBadByteSliceLength is returned when the byte slice does not hold exactly
+// rows*cols*elemSize bytes.
+var ErrBadByteSliceLength = errors.New("cv2: byte slice length does not match rows*cols*element size")
+
+// ErrInvalidMatParams is returned when OpenCV rejects the Mat parameters or
+// cannot allocate the matrix.
+var ErrInvalidMatParams = errors.New("cv2: invalid Mat dimensions, type, or allocation failure")
+
 // Mat is an opaque handle to a native OpenCV cv::Mat.
 //
 // A Mat owns native memory: call Close when done with it.
@@ -52,15 +60,29 @@ func NewMat() Mat {
 // NewMatFromBytes returns a new Mat with the given size and type, initialized
 // with a copy of data. The slice can be modified or garbage collected freely
 // after the call returns.
+//
+// data must hold exactly rows*cols*elemSize bytes: the C++ side copies that
+// many bytes, so a shorter slice would let native code read past the Go
+// allocation.
 func NewMatFromBytes(rows int, cols int, mt MatType, data []byte) (Mat, error) {
 	if len(data) == 0 {
 		return Mat{}, ErrEmptyByteSlice
+	}
+	if rows <= 0 || cols <= 0 || mt.elemSize() <= 0 {
+		return Mat{}, ErrInvalidMatParams
+	}
+	if len(data) != rows*cols*mt.elemSize() {
+		return Mat{}, ErrBadByteSliceLength
 	}
 	buf := C.Cv2ByteArray{
 		data:   (*C.char)(unsafe.Pointer(&data[0])),
 		length: C.int(len(data)),
 	}
-	return Mat{p: C.Cv2_Mat_NewFromBytes(C.int(rows), C.int(cols), C.int(mt), buf)}, nil
+	p := C.Cv2_Mat_NewFromBytes(C.int(rows), C.int(cols), C.int(mt), buf)
+	if p == nil {
+		return Mat{}, ErrInvalidMatParams
+	}
+	return Mat{p: p}, nil
 }
 
 // Close releases the native memory held by the Mat.
@@ -91,6 +113,9 @@ func takeError(msg *C.char) error {
 //
 // See https://docs.opencv.org/4.x/df/dfb/group__imgproc__object.html#ga586ebfb0a7fb604b35a23d85391329be
 func MatchTemplate(image Mat, templ Mat, result *Mat, method TemplateMatchMode, mask Mat) {
+	if image.p == nil || templ.p == nil || result == nil || result.p == nil || mask.p == nil {
+		panic("cv2: MatchTemplate: nil Mat handle (create Mats with NewMat or NewMatFromBytes; a Mat is invalid after Close)")
+	}
 	if err := takeError(C.Cv2_MatchTemplate(image.p, templ.p, result.p, C.int(method), mask.p)); err != nil {
 		panic("cv2: MatchTemplate: " + err.Error())
 	}
@@ -101,6 +126,9 @@ func MatchTemplate(image Mat, templ Mat, result *Mat, method TemplateMatchMode, 
 //
 // See https://docs.opencv.org/4.x/d2/de8/group__core__array.html#gab473bf2eb6d14ff97e89b355dac20707
 func MinMaxLoc(input Mat) (minVal, maxVal float32, minLoc, maxLoc image.Point) {
+	if input.p == nil {
+		panic("cv2: MinMaxLoc: nil Mat handle (create Mats with NewMat or NewMatFromBytes; a Mat is invalid after Close)")
+	}
 	var cMinVal, cMaxVal C.double
 	var cMinLoc, cMaxLoc C.Cv2Point
 

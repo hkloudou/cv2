@@ -9,10 +9,15 @@
 #   - "moving layer" (libcv2wrapper.a): always rebuilt, takes seconds.
 name: build-libs
 
+# Only the default branch may publish prebuilt/* branches: they are shared,
+# force-pushed artifacts, and letting every feature branch overwrite them
+# would clobber the canonical binaries. Update this list if the default
+# branch is ever renamed.
 on:
   push:
-    branches-ignore:
-      - 'prebuilt/**'
+    branches:
+      - main
+      - claude/cv2-image-matching-migrate-kmg04a
     paths:
       - 'build/**'
       - 'wrapper/**'
@@ -27,8 +32,10 @@ on:
 permissions:
   contents: write
 
+# A single global group: two overlapping publishes of the same prebuilt
+# branches must never interleave, regardless of which ref triggered them.
 concurrency:
-  group: build-libs-${{ github.ref }}
+  group: build-libs
   cancel-in-progress: true
 
 jobs:

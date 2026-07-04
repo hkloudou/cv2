@@ -23,9 +23,19 @@ if [ ! -d "$src_tree" ]; then
     mv "$tarball.tmp" "$tarball"
   fi
   echo "==> Verifying source checksum"
-  cv2_verify_sha256 "$tarball" "$OPENCV_SHA256"
+  if ! cv2_verify_sha256 "$tarball" "$OPENCV_SHA256"; then
+    # Drop the bad tarball so a rerun redownloads instead of wedging.
+    rm -f "$tarball"
+    exit 1
+  fi
   echo "==> Extracting"
-  tar -xzf "$tarball" -C "$CV2_SRC_DIR"
+  # Extract into a staging directory and move atomically, so an interrupted
+  # extraction can never masquerade as a complete source tree on rerun.
+  rm -rf "$CV2_SRC_DIR/.extract"
+  mkdir -p "$CV2_SRC_DIR/.extract"
+  tar -xzf "$tarball" -C "$CV2_SRC_DIR/.extract"
+  mv "$CV2_SRC_DIR/.extract/opencv-$OPENCV_VERSION" "$src_tree"
+  rm -rf "$CV2_SRC_DIR/.extract"
 fi
 
 echo "==> Configuring OpenCV for $CV2_TARGET (modules: $OPENCV_MODULES)"

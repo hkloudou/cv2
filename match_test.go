@@ -157,3 +157,31 @@ func TestMatchNilImagePanics(t *testing.T) {
 	}()
 	Match(nil, nil)
 }
+
+func TestNewMatFromBytesValidation(t *testing.T) {
+	// Short buffer must be rejected before native code can read past it.
+	if _, err := NewMatFromBytes(2, 2, MatTypeCV8UC4, make([]byte, 4)); err == nil {
+		t.Fatal("short buffer accepted")
+	}
+	// Negative dimensions must be rejected instead of aborting the process.
+	if _, err := NewMatFromBytes(-1, 10, MatTypeCV8U, make([]byte, 10)); err == nil {
+		t.Fatal("negative rows accepted")
+	}
+	// Exact-size buffer works.
+	m, err := NewMatFromBytes(2, 2, MatTypeCV8UC4, make([]byte, 16))
+	if err != nil {
+		t.Fatalf("exact buffer rejected: %v", err)
+	}
+	m.Close()
+}
+
+func TestMinMaxLocClosedMatPanics(t *testing.T) {
+	defer func() {
+		if recover() == nil {
+			t.Fatal("MinMaxLoc on a closed Mat did not panic")
+		}
+	}()
+	m := NewMat()
+	m.Close()
+	MinMaxLoc(m)
+}

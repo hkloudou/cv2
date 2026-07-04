@@ -66,6 +66,14 @@ const (
 	MatTypeCV32FC4 = MatTypeCV32F + MatChannels4
 )
 
+// elemSize returns the per-pixel byte size of the MatType, following
+// OpenCV's CV_MAKETYPE encoding: depth = mt&7, channels = (mt>>3)+1.
+func (mt MatType) elemSize() int {
+	// Depth order: CV_8U, CV_8S, CV_16U, CV_16S, CV_32S, CV_32F, CV_64F, CV_16F.
+	depthSizes := [8]int{1, 1, 2, 2, 4, 4, 8, 2}
+	return depthSizes[int(mt)&7] * ((int(mt) >> 3) + 1)
+}
+
 // TemplateMatchMode is the comparison method for MatchTemplate.
 type TemplateMatchMode int
 
