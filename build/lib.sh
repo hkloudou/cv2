@@ -5,6 +5,27 @@ set -euo pipefail
 CV2_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 CV2_WORK=${CV2_WORK_DIR:-$CV2_ROOT/.work}
 
+# Portable sha256 (GNU coreutils on Linux, shasum on macOS runners).
+cv2_sha256() {
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum | cut -d' ' -f1
+  else
+    shasum -a 256 | cut -d' ' -f1
+  fi
+}
+
+# cv2_verify_sha256 <file> <expected-hash>
+cv2_verify_sha256() {
+  local file=$1 expected=$2 actual
+  actual=$(cv2_sha256 <"$file")
+  if [ "$actual" != "$expected" ]; then
+    echo "error: checksum mismatch for $file" >&2
+    echo "  expected: $expected" >&2
+    echo "  actual:   $actual" >&2
+    return 1
+  fi
+}
+
 cv2_load_target() {
   local target=$1
   local env_file="$CV2_ROOT/build/targets/$target.env"
@@ -54,5 +75,5 @@ cv2_build_key() {
     return 1
     ;;
   esac
-  cat "${files[@]}" | sha256sum | cut -d' ' -f1
+  cat "${files[@]}" | cv2_sha256
 }

@@ -33,25 +33,36 @@ concurrency:
 
 jobs:
   build:
-    runs-on: ubuntu-24.04
+    runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
       matrix:
-        target:
-          - linux-amd64
-          - linux-386
-          - linux-arm64
-          - windows-amd64
-          - windows-386
+        include:
+          - target: linux-amd64
+            runner: ubuntu-24.04
+          - target: linux-386
+            runner: ubuntu-24.04
+          - target: linux-arm64
+            runner: ubuntu-24.04
+          - target: windows-amd64
+            runner: ubuntu-24.04
+          - target: windows-386
+            runner: ubuntu-24.04
+          - target: darwin-arm64
+            runner: macos-14
     steps:
       - uses: actions/checkout@v4
 
       - name: Install toolchain
         run: |
-          sudo apt-get update
-          # shellcheck disable=SC2046
-          sudo apt-get install -y --no-install-recommends cmake ninja-build \
-            $(build/ci-apt-packages.sh '${{ matrix.target }}')
+          if [ "$RUNNER_OS" = "macOS" ]; then
+            brew install ninja
+          else
+            sudo apt-get update
+            # shellcheck disable=SC2046
+            sudo apt-get install -y --no-install-recommends cmake ninja-build \
+              $(build/ci-apt-packages.sh '${{ matrix.target }}')
+          fi
 
       - name: Decide whether OpenCV needs rebuilding
         id: plan

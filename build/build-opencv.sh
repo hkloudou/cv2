@@ -23,7 +23,7 @@ if [ ! -d "$src_tree" ]; then
     mv "$tarball.tmp" "$tarball"
   fi
   echo "==> Verifying source checksum"
-  echo "$OPENCV_SHA256  $tarball" | sha256sum -c -
+  cv2_verify_sha256 "$tarball" "$OPENCV_SHA256"
   echo "==> Extracting"
   tar -xzf "$tarball" -C "$CV2_SRC_DIR"
 fi
@@ -34,9 +34,11 @@ if [ -n "$CMAKE_TOOLCHAIN" ]; then
   toolchain_arg=(-DCMAKE_TOOLCHAIN_FILE="$CV2_ROOT/build/toolchains/$CMAKE_TOOLCHAIN")
 fi
 
+# The ${arr[@]+...} idiom keeps empty-array expansion safe under set -u on
+# bash 3.2 (macOS runners).
 # shellcheck disable=SC2086
 cmake -G Ninja -S "$src_tree" -B "$CV2_BUILD_DIR" \
-  "${toolchain_arg[@]}" \
+  ${toolchain_arg[@]+"${toolchain_arg[@]}"} \
   -DCMAKE_BUILD_TYPE=Release \
   -DCMAKE_INSTALL_PREFIX="$CV2_DIST_DIR" \
   -DBUILD_SHARED_LIBS=OFF \

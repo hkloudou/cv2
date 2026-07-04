@@ -1,4 +1,4 @@
-//go:build (linux && (amd64 || 386 || arm64)) || (windows && (amd64 || 386))
+//go:build (linux && (amd64 || 386 || arm64)) || (windows && (amd64 || 386)) || (darwin && arm64)
 
 package cv2
 

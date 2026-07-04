@@ -94,6 +94,37 @@ jobs:
           build/setup-gowork.sh
           go test -v ./...
 
+  # Full test run on native Apple Silicon.
+  test-darwin-arm64:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Fetch prebuilt libraries
+        id: fetch
+        run: |
+          set -euo pipefail
+          if build/fetch-prebuilt.sh darwin-arm64; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            status=$?
+            if [ "$status" = 3 ]; then
+              echo "present=false" >> "$GITHUB_OUTPUT"
+              echo "::warning::prebuilt/darwin-arm64 missing; skipping tests (run build-libs first)"
+            else
+              exit "$status"
+            fi
+          fi
+      - name: Test
+        if: steps.fetch.outputs.present == 'true'
+        run: |
+          set -euo pipefail
+          build/setup-gowork.sh
+          go test -v ./...
+
   # Cross link checks: compile and link the full test binary for the other
   # targets. linux-386 and linux-arm64 binaries are also executed (natively /
   # under qemu-user), so those get real test coverage as well.

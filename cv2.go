@@ -11,6 +11,7 @@
 //
 //	linux/amd64, linux/386, linux/arm64
 //	windows/amd64, windows/386 (MinGW-w64 toolchain, POSIX threads variant)
+//	darwin/arm64 (Apple Silicon)
 //
 // CGO is required (CGO_ENABLED=1 and a C/C++ toolchain for your target).
 //

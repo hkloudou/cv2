@@ -44,6 +44,7 @@ func main() {
 | `linux/arm64` | aarch64-linux-gnu-gcc | test binary executed under qemu in CI |
 | `windows/amd64` | MinGW-w64 (POSIX threads) | tested in CI on a Windows runner |
 | `windows/386` | MinGW-w64 i686 (POSIX threads) | link-checked in CI |
+| `darwin/arm64` | Apple clang (macos-14 runner) | tested in CI on Apple Silicon |
 
 Requirements: Go with `CGO_ENABLED=1` and a matching C toolchain. On Windows
 use an MSYS2/MinGW-w64 gcc (POSIX threads variant, which is the MSYS2
@@ -113,8 +114,8 @@ snapshots alive, and each user downloads a single platform's ~5 MB module.
 
 | workflow | trigger | what it does |
 | --- | --- | --- |
-| `build-libs` | push touching `build/**` or `wrapper/**`; manual | cross-builds all 5 targets on Linux runners (MinGW-w64 for Windows), force-pushes `prebuilt/*` branches |
-| `test` | every push/PR; after `build-libs` | linux/amd64 + windows/amd64 native test runs, linux/386 native run, linux/arm64 run under qemu, windows/386 link check |
+| `build-libs` | push touching `build/**` or `wrapper/**`; manual | builds all 6 targets: Linux runners cross-build the Linux and Windows targets (MinGW-w64), a macos-14 runner builds darwin/arm64; force-pushes `prebuilt/*` branches |
+| `test` | every push/PR; after `build-libs` | linux/amd64, windows/amd64 and darwin/arm64 native test runs, linux/386 native run, linux/arm64 run under qemu, windows/386 link check |
 | `release` | manual (`version` input, e.g. `0.1.0`) | tags all `libs/.../vX.Y.Z` modules, pins them in `go.mod`, tags `vX.Y.Z` |
 
 ## Local development
