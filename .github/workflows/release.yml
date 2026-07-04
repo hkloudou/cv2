@@ -1,7 +1,11 @@
 # Cuts a release: tags every libs module at the head of its prebuilt branch,
 # pins those versions in the root go.mod, and tags the root module.
 #
-# Run it manually from the Actions tab after build-libs and test are green.
+# Two ways to trigger it, after build-libs and test are green:
+#   - manually from the Actions tab (version input), or
+#   - by committing the new version (e.g. "0.1.0") to the RELEASE_VERSION
+#     file on the default branch. Re-pushing an already-released version is
+#     a no-op, so the trigger is idempotent.
 name: release
 
 on:
@@ -11,6 +15,12 @@ on:
         description: 'Semantic version WITHOUT the leading v (e.g. 0.1.0)'
         required: true
         type: string
+  push:
+    branches:
+      - main
+      - claude/cv2-image-matching-migrate-kmg04a
+    paths:
+      - RELEASE_VERSION
 
 permissions:
   contents: write
@@ -35,4 +45,13 @@ jobs:
           # Passed via env, not string interpolation, so a crafted input
           # cannot inject shell syntax into the run block.
           VERSION: ${{ inputs.version }}
-        run: build/release.sh "$VERSION"
+        run: |
+          set -euo pipefail
+          if [ -z "${VERSION:-}" ]; then
+            VERSION=$(tr -d '[:space:]' < RELEASE_VERSION)
+          fi
+          if git ls-remote --exit-code origin "refs/tags/v$VERSION" >/dev/null 2>&1; then
+            echo "tag v$VERSION already exists; nothing to release"
+            exit 0
+          fi
+          build/release.sh "$VERSION"

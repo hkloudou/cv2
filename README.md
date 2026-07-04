@@ -116,7 +116,7 @@ snapshots alive, and each user downloads a single platform's ~5 MB module.
 | --- | --- | --- |
 | `build-libs` | push touching `build/**` or `wrapper/**`; manual | builds all 6 targets: Linux runners cross-build the Linux and Windows targets (MinGW-w64), a macos-14 runner builds darwin/arm64; force-pushes `prebuilt/*` branches |
 | `test` | every push/PR; after `build-libs` | linux/amd64, windows/amd64 and darwin/arm64 native test runs, linux/386 native run, linux/arm64 run under qemu, windows/386 link check |
-| `release` | manual (`version` input, e.g. `0.1.0`) | tags all `libs/.../vX.Y.Z` modules, pins them in `go.mod`, tags `vX.Y.Z` |
+| `release` | manual (`version` input) or committing the version to `RELEASE_VERSION` | tags all `libs/.../vX.Y.Z` modules, pins them in `go.mod`, tags `vX.Y.Z` |
 
 ## Local development
 
