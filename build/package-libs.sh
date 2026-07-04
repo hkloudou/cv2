@@ -55,7 +55,9 @@ cp "$CV2_DIST_DIR/OPENCV-LICENSE.txt" "$out_libs/LICENSE-OPENCV.txt"
 
 opencv_key=$(cv2_build_key "$CV2_TARGET" opencv)
 wrapper_key=$(cv2_build_key "$CV2_TARGET" wrapper)
-source_commit=$(git -C "$CV2_ROOT" rev-parse HEAD 2>/dev/null || echo unknown)
+# --verify --quiet keeps unborn branches from echoing a literal "HEAD".
+source_commit=$(git -C "$CV2_ROOT" rev-parse --verify --quiet HEAD 2>/dev/null || true)
+[ -n "$source_commit" ] || source_commit=unknown
 built_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 
 cat >"$CV2_OUT_DIR/MANIFEST" <<EOF
