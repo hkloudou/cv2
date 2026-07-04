@@ -35,7 +35,10 @@ pick_one() {
 
 core_lib=$(pick_one "libopencv_core" $(find "$CV2_DIST_DIR" -name 'libopencv_core*.a' | LC_ALL=C sort))
 imgproc_lib=$(pick_one "libopencv_imgproc" $(find "$CV2_DIST_DIR" -name 'libopencv_imgproc*.a' | LC_ALL=C sort))
-zlib_lib=$(pick_one "libzlib" $(find "$CV2_DIST_DIR" -name 'libzlib.a' | LC_ALL=C sort -u | head -1))
+# The dist tree may hold identical zlib copies in more than one place
+# (3rdparty-lib/ plus the platform's staticlib dir); any one of them works.
+zlib_lib=$(find "$CV2_DIST_DIR" -name 'libzlib.a' | LC_ALL=C sort | head -1)
+[ -n "$zlib_lib" ] || { echo "error: no libzlib.a found in $CV2_DIST_DIR" >&2; exit 1; }
 wrapper_lib=$CV2_OBJ_DIR/libcv2wrapper.a
 [ -f "$wrapper_lib" ] || { echo "error: $wrapper_lib missing (run build-wrapper.sh first)" >&2; exit 1; }
 
