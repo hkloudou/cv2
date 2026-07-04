@@ -1,0 +1,166 @@
+# Tests the Go bindings against the CI-built static libraries.
+#
+# The libs modules are taken from the prebuilt/* branches via go.work, so
+# tests always run against the latest CI binaries without needing release
+# tags. Jobs are skipped with a warning while a prebuilt branch does not
+# exist yet (fresh repository bootstrap).
+name: test
+
+on:
+  push:
+    branches-ignore:
+      - 'prebuilt/**'
+  pull_request:
+  workflow_dispatch:
+  workflow_run:
+    workflows: [build-libs]
+    types: [completed]
+
+permissions:
+  contents: read
+
+jobs:
+  # Full test run on native linux/amd64.
+  test-linux-amd64:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Fetch prebuilt libraries
+        id: fetch
+        run: |
+          set -euo pipefail
+          if build/fetch-prebuilt.sh linux-amd64; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            status=$?
+            if [ "$status" = 3 ]; then
+              echo "present=false" >> "$GITHUB_OUTPUT"
+              echo "::warning::prebuilt/linux-amd64 missing; skipping tests (run build-libs first)"
+            else
+              exit "$status"
+            fi
+          fi
+      - name: Test
+        if: steps.fetch.outputs.present == 'true'
+        run: |
+          set -euo pipefail
+          build/setup-gowork.sh
+          go vet .
+          go test -v ./...
+
+  # Full test run on native Windows (MSYS2 MinGW-w64 toolchain, like users).
+  test-windows-amd64:
+    runs-on: windows-2022
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: false
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          install: mingw-w64-x86_64-gcc
+      - name: Fetch prebuilt libraries
+        id: fetch
+        run: |
+          set -euo pipefail
+          if build/fetch-prebuilt.sh windows-amd64; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            status=$?
+            if [ "$status" = 3 ]; then
+              echo "present=false" >> "$GITHUB_OUTPUT"
+              echo "::warning::prebuilt/windows-amd64 missing; skipping tests (run build-libs first)"
+            else
+              exit "$status"
+            fi
+          fi
+      - name: Test
+        if: steps.fetch.outputs.present == 'true'
+        env:
+          CGO_ENABLED: '1'
+        run: |
+          set -euo pipefail
+          export PATH="/c/msys64/mingw64/bin:$PATH"
+          gcc --version | head -1
+          build/setup-gowork.sh
+          go test -v ./...
+
+  # Cross link checks: compile and link the full test binary for the other
+  # targets. linux-386 and linux-arm64 binaries are also executed (natively /
+  # under qemu-user), so those get real test coverage as well.
+  cross:
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: linux-386
+            run: native
+          - target: linux-arm64
+            run: qemu-aarch64
+          - target: windows-amd64
+            run: none
+          - target: windows-386
+            run: none
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Install toolchain
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          extra=''
+          if [ '${{ matrix.run }}' = 'qemu-aarch64' ]; then
+            extra='qemu-user-static'
+          fi
+          # shellcheck disable=SC2046
+          sudo apt-get install -y --no-install-recommends \
+            $(build/ci-apt-packages.sh '${{ matrix.target }}') $extra
+      - name: Fetch prebuilt libraries
+        id: fetch
+        run: |
+          set -euo pipefail
+          if build/fetch-prebuilt.sh '${{ matrix.target }}'; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            status=$?
+            if [ "$status" = 3 ]; then
+              echo "present=false" >> "$GITHUB_OUTPUT"
+              echo "::warning::prebuilt/${{ matrix.target }} missing; skipping (run build-libs first)"
+            else
+              exit "$status"
+            fi
+          fi
+      - name: Build test binary
+        if: steps.fetch.outputs.present == 'true'
+        run: |
+          set -euo pipefail
+          build/setup-gowork.sh
+          source "build/targets/${{ matrix.target }}.env"
+          export CGO_ENABLED=1 GOOS=$TARGET_GOOS GOARCH=$TARGET_GOARCH CC=$CROSS_CC
+          go test -c -o .work/cv2.test .
+          ls -la .work/cv2.test
+      - name: Run test binary
+        if: steps.fetch.outputs.present == 'true' && matrix.run != 'none'
+        run: |
+          set -euo pipefail
+          case '${{ matrix.run }}' in
+            native)
+              ./.work/cv2.test -test.v
+              ;;
+            qemu-aarch64)
+              qemu-aarch64-static -L /usr/aarch64-linux-gnu ./.work/cv2.test -test.v
+              ;;
+          esac

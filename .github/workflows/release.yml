@@ -1,0 +1,34 @@
+# Cuts a release: tags every libs module at the head of its prebuilt branch,
+# pins those versions in the root go.mod, and tags the root module.
+#
+# Run it manually from the Actions tab after build-libs and test are green.
+name: release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Semantic version WITHOUT the leading v (e.g. 0.1.0)'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Release
+        run: build/release.sh '${{ inputs.version }}'

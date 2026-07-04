@@ -1,0 +1,95 @@
+# Builds the static libraries for every supported platform on plain Linux
+# runners (Windows targets are cross-compiled with MinGW-w64) and force-pushes
+# each result as a single orphan commit to its prebuilt/<target> branch.
+#
+# Two-layer caching keeps this cheap:
+#   - "fixed layer" (OpenCV core+imgproc + zlib): rebuilt only when the
+#     OPENCV_BUILD_KEY changes (build/build.conf, target env, toolchain file);
+#     otherwise the SDK stored in the prebuilt branch is reused.
+#   - "moving layer" (libcv2wrapper.a): always rebuilt, takes seconds.
+name: build-libs
+
+on:
+  push:
+    branches-ignore:
+      - 'prebuilt/**'
+    paths:
+      - 'build/**'
+      - 'wrapper/**'
+      - '.github/workflows/build-libs.yml'
+  workflow_dispatch:
+    inputs:
+      force_opencv_rebuild:
+        description: Rebuild OpenCV even if the build key is unchanged
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-libs-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - linux-amd64
+          - linux-386
+          - linux-arm64
+          - windows-amd64
+          - windows-386
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install toolchain
+        run: |
+          sudo apt-get update
+          # shellcheck disable=SC2046
+          sudo apt-get install -y --no-install-recommends cmake ninja-build \
+            $(build/ci-apt-packages.sh '${{ matrix.target }}')
+
+      - name: Decide whether OpenCV needs rebuilding
+        id: plan
+        env:
+          FORCE: ${{ inputs.force_opencv_rebuild }}
+        run: |
+          set -euo pipefail
+          target='${{ matrix.target }}'
+          new_key=$(build/build-key.sh "$target" opencv)
+          reuse=false
+          if [ "${FORCE:-false}" != "true" ] \
+            && git ls-remote --exit-code origin "refs/heads/prebuilt/$target" >/dev/null 2>&1; then
+            git fetch --depth 1 origin "refs/heads/prebuilt/$target"
+            old_key=$(git show FETCH_HEAD:MANIFEST 2>/dev/null | sed -n 's/^OPENCV_BUILD_KEY=//p' || true)
+            if [ "$old_key" = "$new_key" ]; then
+              reuse=true
+            fi
+          fi
+          echo "reuse=$reuse" >> "$GITHUB_OUTPUT"
+          echo "OpenCV build key: $new_key (reuse=$reuse)"
+
+      - name: Restore OpenCV SDK from prebuilt branch
+        if: steps.plan.outputs.reuse == 'true'
+        run: |
+          set -euo pipefail
+          mkdir -p ".work/dist/${{ matrix.target }}"
+          git archive FETCH_HEAD sdk | tar -x -C ".work/dist/${{ matrix.target }}"
+          mv ".work/dist/${{ matrix.target }}/sdk" ".work/dist/${{ matrix.target }}/opencv"
+
+      - name: Build OpenCV (static, minimal module list)
+        if: steps.plan.outputs.reuse != 'true'
+        run: build/build-opencv.sh '${{ matrix.target }}'
+
+      - name: Build wrapper
+        run: build/build-wrapper.sh '${{ matrix.target }}'
+
+      - name: Package libs module
+        run: build/package-libs.sh '${{ matrix.target }}'
+
+      - name: Push prebuilt branch
+        run: build/push-prebuilt.sh '${{ matrix.target }}'
