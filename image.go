@@ -17,6 +17,9 @@ var ErrEmptyImage = errors.New("cv2: empty image")
 //
 // The caller owns the returned Mat and must Close it.
 func ImageToMatRGBA(img image.Image) (Mat, error) {
+	if img == nil {
+		return Mat{}, ErrEmptyImage
+	}
 	bounds := img.Bounds()
 	w, h := bounds.Dx(), bounds.Dy()
 	if w <= 0 || h <= 0 {

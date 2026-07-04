@@ -148,3 +148,12 @@ func BenchmarkMatch(b *testing.B) {
 		Match(parent, sub)
 	}
 }
+
+func TestMatchNilImagePanics(t *testing.T) {
+	defer func() {
+		if recover() == nil {
+			t.Fatal("Match(nil, nil) did not panic")
+		}
+	}()
+	Match(nil, nil)
+}
