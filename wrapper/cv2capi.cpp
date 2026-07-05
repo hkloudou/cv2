@@ -225,3 +225,10 @@ void Cv2_FreeString(char *s)
     std::free(s);
   }
 }
+
+char *Cv2_CopyError(const char *msg)
+{
+  // The sentinel lives in this translation unit, so other wrapper sources
+  // must allocate through here for Cv2_FreeString's identity check to hold.
+  return copy_error(msg);
+}

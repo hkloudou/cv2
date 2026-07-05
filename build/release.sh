@@ -64,15 +64,17 @@ for env_file in build/targets/*.env; do
     exit 1
   fi
 
-  goos=$(sed -n 's/^GOOS=//p' <<<"$manifest")
-  goarch=$(sed -n 's/^GOARCH=//p' <<<"$manifest")
-  tag=libs/${goos}_${goarch}/v$version
-  if git rev-parse --verify -q "refs/tags/$tag" >/dev/null; then
-    echo "error: tag $tag already exists; module versions are immutable, bump the version" >&2
-    exit 1
-  fi
-  git tag "$tag" "$ref"
-  tags+=("$tag")
+  # Tag every libs module the branch carries (base plus feature sets).
+  while IFS= read -r module_dir; do
+    [ -n "$module_dir" ] || continue
+    tag=libs/$module_dir/v$version
+    if git rev-parse --verify -q "refs/tags/$tag" >/dev/null; then
+      echo "error: tag $tag already exists; module versions are immutable, bump the version" >&2
+      exit 1
+    fi
+    git tag "$tag" "$ref"
+    tags+=("$tag")
+  done < <(git ls-tree --name-only "$ref:libs")
 done
 
 echo "==> Pushing libs tags: ${tags[*]}"

@@ -148,6 +148,24 @@ building block for multi-scale matching), `CvtColor`, `GaussianBlur` and
 `Threshold`. All of these run against the same prebuilt libraries — no
 extra downloads.
 
+### Optional feature sets (import-driven)
+
+Extra OpenCV capability ships as subpackages backed by their own libs
+modules. You opt in by importing — programs that skip the import never
+download or link the extra binaries:
+
+```go
+import "github.com/hkloudou/cv2/f2d"
+
+// Scale/rotation-tolerant localization via ORB features + RANSAC
+// homography (needs OpenCV features2d + calib3d, ~4 MB extra, fetched
+// automatically for your platform only):
+res := f2d.Locate(screenshot, button)
+if res.Found {
+	fmt.Println("center:", res.Center, "corners:", res.Corners)
+}
+```
+
 ## License
 
 The Go and C++ code in this repository is provided by the repository owner.

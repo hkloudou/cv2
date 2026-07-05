@@ -98,6 +98,13 @@ func (m *Mat) Close() error {
 	return nil
 }
 
+// Ptr exposes the native cv::Mat handle for subpackages (such as
+// github.com/hkloudou/cv2/f2d) and advanced interop. It is nil for a closed
+// or zero-value Mat. Treat it as opaque.
+func (m Mat) Ptr() unsafe.Pointer {
+	return unsafe.Pointer(m.p)
+}
+
 // Rows returns the number of rows, or -1 for a closed or zero-value Mat.
 func (m Mat) Rows() int {
 	return int(C.Cv2_Mat_Rows(m.p))

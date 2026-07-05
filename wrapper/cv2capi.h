@@ -70,6 +70,11 @@ typedef void *Cv2Mat;
   // Releases an error string returned by the functions above.
   void Cv2_FreeString(char *s);
 
+  // Internal helper shared by all wrapper translation units: returns a
+  // malloc'd copy of msg (or a static sentinel when allocation fails) that
+  // must be released with Cv2_FreeString. Not intended for Go callers.
+  char *Cv2_CopyError(const char *msg);
+
 #ifdef __cplusplus
 }
 #endif
