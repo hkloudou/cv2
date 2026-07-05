@@ -85,6 +85,29 @@ void Cv2_Mat_Close(Cv2Mat m)
   delete m;
 }
 
+char *Cv2_Mat_DataCopy(Cv2Mat m, char *dst, int dstLen)
+{
+  if (m == nullptr || dst == nullptr)
+  {
+    return copy_error("null Mat handle");
+  }
+  try
+  {
+    const cv::Mat continuous = m->isContinuous() ? *m : m->clone();
+    const size_t total = continuous.total() * continuous.elemSize();
+    if ((size_t)dstLen != total)
+    {
+      return copy_error("destination length does not match Mat data size");
+    }
+    std::memcpy(dst, continuous.ptr(), total);
+    return nullptr;
+  }
+  catch (...)
+  {
+    return current_exception_message();
+  }
+}
+
 int Cv2_Mat_Rows(Cv2Mat m)
 {
   return m == nullptr ? -1 : m->rows;

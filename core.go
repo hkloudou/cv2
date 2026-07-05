@@ -22,6 +22,7 @@ typedef void *Cv2Mat;
 extern Cv2Mat Cv2_Mat_New(void);
 extern Cv2Mat Cv2_Mat_NewFromBytes(int rows, int cols, int type, Cv2ByteArray buf);
 extern void Cv2_Mat_Close(Cv2Mat m);
+extern char *Cv2_Mat_DataCopy(Cv2Mat m, char *dst, int dstLen);
 extern int Cv2_Mat_Rows(Cv2Mat m);
 extern int Cv2_Mat_Cols(Cv2Mat m);
 extern int Cv2_Mat_Channels(Cv2Mat m);
@@ -96,6 +97,26 @@ func (m *Mat) Close() error {
 		m.p = nil
 	}
 	return nil
+}
+
+// ToBytes returns a copy of the Mat's pixel data in row-major order
+// (rows*cols*elemSize bytes) — the inverse of NewMatFromBytes. Multi-byte
+// elements (e.g. the float32 values of a MatchTemplate result) use the
+// platform byte order; every supported platform is little-endian.
+func (m Mat) ToBytes() ([]byte, error) {
+	if m.p == nil {
+		return nil, ErrInvalidMatParams
+	}
+	rows, cols := m.Rows(), m.Cols()
+	size := rows * cols * m.Type().elemSize()
+	if rows <= 0 || cols <= 0 || size <= 0 {
+		return nil, ErrInvalidMatParams
+	}
+	buf := make([]byte, size)
+	if err := takeError(C.Cv2_Mat_DataCopy(m.p, (*C.char)(unsafe.Pointer(&buf[0])), C.int(size))); err != nil {
+		return nil, err
+	}
+	return buf, nil
 }
 
 // Ptr exposes the native cv::Mat handle for subpackages (such as

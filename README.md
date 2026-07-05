@@ -190,6 +190,147 @@ if res.Found {
 }
 ```
 
+## Maintainer guide (for humans and future AIs)
+
+Everything below is the complete operating model of this repository. Read it
+before changing anything; every rule here is load-bearing.
+
+### Topology
+
+```
+source of truth      the default branch: Go + wrapper C++ + build/ scripts + workflows.
+                     No binaries, ever.
+
+prebuilt/<ocv>/<target>
+                     machine-generated, one per (OpenCV line x platform), e.g.
+                     prebuilt/4.8.1/linux-amd64. Always a SINGLE orphan commit,
+                     force-pushed by CI. Content:
+                       libs/<goos>_<goarch>/        base libs Go module
+                       libs/<goos>_<goarch>_f2d/    feature-set libs Go module(s)
+                       sdk/                         full OpenCV install tree (headers+libs)
+                       MANIFEST                     provenance + cache keys
+                     Never commit to these by hand; never expect history on them.
+
+tags                 v0.<code>.N            root module release of one OpenCV line
+                     libs/<dir>/v0.<code>.N one per libs module, pointing INTO the
+                                            prebuilt branch commit that was released.
+                     Tags are immutable: never delete or move a published tag
+                     (the Go module proxy has already mirrored it). Fixes = new N.
+```
+
+### Version scheme
+
+`v0.<code>.<revision>` where `code = major*10000 + minor*100 + patch` of the
+OpenCV version (4.8.1 → 40801, 4.12.0 → 41200). Properties this must keep:
+codes order monotonically with OpenCV versions; `@v0.<code>` prefix queries
+select the newest revision of a line; `@latest` follows the biggest code.
+The set of buildable lines is `OPENCV_VERSIONS` in `build/build.conf`, each
+with a pinned tarball sha256 (`OPENCV_SHA256_<code>`). `release.sh` decodes
+the code from the requested module version and refuses unknown lines.
+
+### The two-layer cache (why CI is fast)
+
+Two content hashes, computed by `build/lib.sh:cv2_build_key` and stored in
+each prebuilt branch's MANIFEST:
+
+- `OPENCV_BUILD_KEY` = sha256(build.conf + targets/<t>.env + toolchain file
+  + build-opencv.sh + "opencv=<version>"). If the branch's key matches, CI
+  restores `sdk/` from the branch and skips the OpenCV compile entirely.
+- `WRAPPER_KEY` = sha256(build.conf + targets/<t>.env + build-wrapper.sh +
+  package-libs.sh + every file under wrapper/ + "opencv=<version>"). Used
+  by `fetch-prebuilt.sh --require-fresh` (CI tests skip stale binaries and
+  rely on the workflow_run re-trigger) and by `release.sh` (refuses to tag
+  stale binaries).
+
+Consequence: editing wrapper/ or Go code costs seconds of CI per job;
+editing build.conf/envs/toolchains rebuilds the fixed layer for the
+affected lines/targets only.
+
+### Script contracts (build/)
+
+| script | contract |
+| --- | --- |
+| `lib.sh` | shared: loads build.conf + target env; `CV2_OPENCV_VERSION` env selects the line (default `OPENCV_VERSION`); computes versioned paths and `CV2_PREBUILT_BRANCH`; portable sha256 |
+| `build-opencv.sh <t>` | downloads (sha256-verified, atomic extract) and builds static OpenCV per BUILD_LIST into `.work/dist/<ocv>/<t>/opencv`; a pre-extracted `.work/src/opencv-<ver>/` is used as-is (offline mirror hook) |
+| `build-wrapper.sh <t>` | compiles wrapper/cv2capi.cpp -> libcv2wrapper.a and each feature set's sources -> libcv2<set>wrapper.a |
+| `package-libs.sh <t>` | emits `.work/out/<ocv>/<t>/`: MANIFEST, README, sdk/, and one Go module per lib set (base + feature sets) with generated go.mod/libs.go (build tag + cgo LDFLAGS from the env); normalizes archive names |
+| `push-prebuilt.sh <t>` | stages that out dir with a throwaway index, writes an orphan commit inside the main repo's object DB (reuses its credentials), force-pushes to `CV2_PREBUILT_BRANCH` |
+| `fetch-prebuilt.sh [--require-fresh] <t>` | pulls the branch's libs/ into `.prebuilt/`; exit 3 = branch missing, exit 4 = stale wrapper key (only with the flag), other = real error (never masked) |
+| `setup-gowork.sh` | go.work overlaying the root module with every fetched `.prebuilt/libs/*` module |
+| `release.sh <0.code.N>` | validates + decodes the line; verifies every target branch exists and is fresh; tags every module dir found in each branch's `libs/`; pins them in go.mod (go mod tidy with proxy-indexing retries); commits, tags `v0.code.N`, pushes. Refuses detached HEAD/tag dispatch |
+| `build-key.sh <t> opencv\|wrapper` | prints the layer key (used by CI plan steps) |
+| `ci-apt-packages.sh <t>` | prints the target's cross-toolchain apt packages |
+
+### Workflows
+
+- `build-libs`: push (default branch, paths build/ wrapper/ or itself) or
+  manual. `setup` job reads OPENCV_VERSIONS -> matrix (lines x 6 targets,
+  Linux runners cross-compile Windows via MinGW-w64; darwin on macos-14).
+  Per job: plan (key check) -> restore-or-build OpenCV -> wrappers ->
+  package -> force-push branch. Global concurrency group, newest push wins.
+  GITHUB_TOKEN pushes deliberately do not retrigger workflows, so branch
+  publishing cannot loop.
+- `test`: every push/PR + workflow_run after build-libs. Same version
+  matrix. Native full runs on linux/amd64, windows/amd64 (MSYS2 MINGW64
+  shell, path-type inherit), darwin/arm64; linux/386 executes natively;
+  linux/arm64 executes under qemu-user; windows link-checks. Fetch step maps
+  exit 3/4 to skip-with-warning so bootstrap and coordinated wrapper+Go
+  pushes stay green (the workflow_run pass tests for real).
+- `release`: manual (version input) or push changing RELEASE_VERSION on the
+  default branch; already-released versions no-op. Runs build/release.sh.
+
+### Releasing / recovery runbook
+
+1. Ensure build-libs and test are green for the target line.
+2. Commit the module version (e.g. `0.40801.1`) to RELEASE_VERSION (or
+   dispatch the workflow). Watch the release run.
+3. If release fails after libs tags were pushed but before the root tag:
+   those libs tags are consumed only via go.mod pins, so simply fix and
+   re-run with a BUMPED revision (tags are immutable; never force-move).
+4. `go mod tidy` inside release retries while proxy.golang.org indexes the
+   fresh tags; a persistent failure aborts before the root tag on purpose.
+5. Bootstrap-from-zero: push source -> build-libs populates branches ->
+   release. Nothing else is stateful.
+
+### Extension recipes
+
+- New exported function from an already-built module: add `Cv2_*` to
+  wrapper (error-string contract below), mirror the prototype in the cgo
+  preamble, add the Go API + a parity test mirroring OpenCV's reference
+  semantics (see parity_test.go). Cost: wrapper-layer rebuild only.
+- New OpenCV module / feature set: extend OPENCV_MODULES (superset build),
+  declare `CV2_<SET>_LIBS` + `CV2_<SET>_WRAPPER_SOURCES` in build.conf, add
+  wrapper/<set>.cpp, a subpackage with per-platform blank imports of
+  `libs/<goos>_<goarch>_<set>`, tests. Import-driven: non-importers never
+  download it.
+- New OpenCV version line: append to OPENCV_VERSIONS + pin
+  `OPENCV_SHA256_<code>` (use an authoritative source, e.g. the easybuild
+  archives); CI builds the new branches; release `0.<newcode>.0`.
+- New platform: `build/targets/<os>-<arch>.env` (+ toolchain file), a
+  matrix entry in both workflows, `libs_<goos>_<goarch>.go` link files in
+  the root package and each subpackage, extend the build tags.
+
+### Invariants — do not break these
+
+1. The cgo preambles re-declare the C prototypes: any wrapper ABI change
+   must update wrapper/cv2capi.h AND every Go preamble in the same commit.
+2. Error strings cross the ABI as malloc'd `char*` allocated ONLY through
+   `Cv2_CopyError`/`copy_error` in cv2capi.cpp (the malloc-failure sentinel
+   is compared by pointer identity in Cv2_FreeString — a second allocator
+   in another translation unit would break it). NULL always means success.
+3. C++ exceptions must never unwind across the ABI: every wrapper entry
+   point that can throw wraps its body in try/catch; constructors signal
+   failure with NULL instead.
+4. Nil/closed Mats must be rejected on both sides (Go guard + C NULL
+   check): a NULL dereference is a hardware fault a try/catch cannot stop.
+5. libs modules and prebuilt branches are generated artifacts: regenerate
+   via CI, never edit; local hand-built binaries must never be pushed to
+   prebuilt branches (CI is the only publisher).
+6. Everything in this repository is English-only.
+7. Module zips must stay per-platform-small: never add binaries to the
+   default branch or cross-platform requires outside the build-tag-guarded
+   link files.
+
 ## License
 
 The Go and C++ code in this repository is provided by the repository owner.

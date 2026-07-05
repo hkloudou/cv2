@@ -37,6 +37,11 @@ typedef void *Cv2Mat;
   // Releases a Mat created by Cv2_Mat_New or Cv2_Mat_NewFromBytes.
   void Cv2_Mat_Close(Cv2Mat m);
 
+  // Copies the Mat's pixel data (row-major, continuous) into dst. dstLen
+  // must equal rows*cols*elemSize. Returns NULL on success, otherwise a
+  // malloc'd error message to release with Cv2_FreeString.
+  char *Cv2_Mat_DataCopy(Cv2Mat m, char *dst, int dstLen);
+
   // Shape accessors. Return -1 when m is NULL.
   int Cv2_Mat_Rows(Cv2Mat m);
   int Cv2_Mat_Cols(Cv2Mat m);
