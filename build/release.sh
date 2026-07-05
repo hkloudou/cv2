@@ -14,18 +14,25 @@
 set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
-version=${1:?usage: release.sh <version-without-v>}
-# Strict subset of semver that Go module tags accept: no leading zeros, an
-# optional dash prerelease, and no +build metadata (Go rejects it in tags).
-if ! [[ "$version" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z][0-9A-Za-z.-]*)?$ ]]; then
-  echo "error: '$version' is not a valid Go module version (expected e.g. 0.1.0 or 0.2.0-rc.1)" >&2
+version=${1:?usage: release.sh <module-version-without-v, e.g. 0.40801.0>}
+# Module versions encode the OpenCV line: 0.<code>.<revision> where
+# code = major*10000 + minor*100 + patch (4.8.1 -> 40801, 4.12.0 -> 41200).
+if ! [[ "$version" =~ ^0\.([1-9][0-9]{4,5})\.(0|[1-9][0-9]*)(-[0-9A-Za-z][0-9A-Za-z.-]*)?$ ]]; then
+  echo "error: '$version' is not a valid release version; expected 0.<opencv-code>.<revision>, e.g. 0.40801.0 for OpenCV 4.8.1" >&2
   exit 1
 fi
-major=${version%%.*}
-if [ "$major" -ge 2 ]; then
-  echo "error: major versions >= 2 need a /vN module path suffix; adjust tooling first" >&2
+opencv_code=${BASH_REMATCH[1]}
+opencv_version=$(cv2_opencv_version_from_code "$opencv_code")
+# shellcheck disable=SC1091
+source "$CV2_ROOT/build/build.conf"
+case " $OPENCV_VERSIONS " in
+*" $opencv_version "*) ;;
+*)
+  echo "error: version code $opencv_code decodes to OpenCV $opencv_version, which is not in OPENCV_VERSIONS ($OPENCV_VERSIONS)" >&2
   exit 1
-fi
+  ;;
+esac
+echo "==> Releasing v$version (OpenCV $opencv_version line)"
 
 # Refuse to release from anything but a branch: in CI a tag/SHA dispatch, or
 # locally a detached HEAD, would push the go.mod pin commit to a junk ref.
@@ -50,17 +57,18 @@ git fetch origin '+refs/heads/prebuilt/*:refs/cv2-prebuilt/*'
 tags=()
 for env_file in build/targets/*.env; do
   target=$(basename "$env_file" .env)
-  ref=refs/cv2-prebuilt/$target
+  ref=refs/cv2-prebuilt/$opencv_version/$target
   if ! git rev-parse --verify -q "$ref" >/dev/null; then
-    echo "error: branch prebuilt/$target is missing; run the build-libs workflow first" >&2
+    echo "error: branch prebuilt/$opencv_version/$target is missing; run the build-libs workflow first" >&2
     exit 1
   fi
 
   manifest=$(git show "$ref:MANIFEST")
   branch_wrapper_key=$(sed -n 's/^WRAPPER_KEY=//p' <<<"$manifest")
+  CV2_OPENCV_VERSION=$opencv_version cv2_load_target "$target"
   expected_wrapper_key=$(cv2_build_key "$target" wrapper)
   if [ "$branch_wrapper_key" != "$expected_wrapper_key" ]; then
-    echo "error: prebuilt/$target is stale (wrapper key mismatch); re-run build-libs first" >&2
+    echo "error: prebuilt/$opencv_version/$target is stale (wrapper key mismatch); re-run build-libs first" >&2
     exit 1
   fi
 

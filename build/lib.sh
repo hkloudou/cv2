@@ -26,6 +26,20 @@ cv2_verify_sha256() {
   fi
 }
 
+# cv2_opencv_code <version>  ->  major*10000 + minor*100 + patch
+cv2_opencv_code() {
+  local v=$1
+  local major=${v%%.*} rest=${v#*.}
+  local minor=${rest%%.*} patch=${rest#*.}
+  echo $((major * 10000 + minor * 100 + patch))
+}
+
+# cv2_opencv_version_from_code <code>  ->  dotted version
+cv2_opencv_version_from_code() {
+  local code=$1
+  echo "$((code / 10000)).$((code % 10000 / 100)).$((code % 100))"
+}
+
 cv2_load_target() {
   local target=$1
   local env_file="$CV2_ROOT/build/targets/$target.env"
@@ -40,18 +54,40 @@ cv2_load_target() {
   # shellcheck disable=SC1090
   source "$env_file"
 
+  # CV2_OPENCV_VERSION selects the version line (defaults to the primary).
+  if [ -n "${CV2_OPENCV_VERSION:-}" ]; then
+    OPENCV_VERSION=$CV2_OPENCV_VERSION
+  fi
+  case " $OPENCV_VERSIONS " in
+  *" $OPENCV_VERSION "*) ;;
+  *)
+    echo "error: OpenCV version '$OPENCV_VERSION' is not in OPENCV_VERSIONS ($OPENCV_VERSIONS)" >&2
+    exit 1
+    ;;
+  esac
+  OPENCV_CODE=$(cv2_opencv_code "$OPENCV_VERSION")
+  local sha_var="OPENCV_SHA256_$OPENCV_CODE"
+  OPENCV_SHA256=${!sha_var:-}
+  if [ -z "$OPENCV_SHA256" ]; then
+    echo "error: no $sha_var pinned in build/build.conf" >&2
+    exit 1
+  fi
+
   CV2_TARGET=$target
   CV2_SRC_DIR=$CV2_WORK/src
-  CV2_BUILD_DIR=$CV2_WORK/build/$target
-  CV2_DIST_DIR=$CV2_WORK/dist/$target/opencv
-  CV2_OBJ_DIR=$CV2_WORK/obj/$target
-  CV2_OUT_DIR=$CV2_WORK/out/$target
+  CV2_BUILD_DIR=$CV2_WORK/build/$OPENCV_VERSION/$target
+  CV2_DIST_DIR=$CV2_WORK/dist/$OPENCV_VERSION/$target/opencv
+  CV2_OBJ_DIR=$CV2_WORK/obj/$OPENCV_VERSION/$target
+  CV2_OUT_DIR=$CV2_WORK/out/$OPENCV_VERSION/$target
+  CV2_PREBUILT_BRANCH=prebuilt/$OPENCV_VERSION/$target
 }
 
 # cv2_build_key <target> opencv|wrapper
 # Prints a content hash of everything that influences the corresponding
 # build layer. CI skips the expensive OpenCV rebuild when the opencv key
-# stored in the prebuilt branch MANIFEST still matches.
+# stored in the prebuilt branch MANIFEST still matches. Requires
+# cv2_load_target to have run (the selected OPENCV_VERSION is part of the
+# key, so different version lines never share cache entries).
 cv2_build_key() {
   local target=$1 layer=$2
   local files=()
@@ -75,5 +111,8 @@ cv2_build_key() {
     return 1
     ;;
   esac
-  cat "${files[@]}" | cv2_sha256
+  {
+    cat "${files[@]}"
+    echo "opencv=$OPENCV_VERSION"
+  } | cv2_sha256
 }

@@ -21,7 +21,7 @@ if [ "${1:-}" = "--require-fresh" ]; then
 fi
 
 cv2_load_target "${1:?usage: fetch-prebuilt.sh [--require-fresh] <target>}"
-branch=prebuilt/$CV2_TARGET
+branch=$CV2_PREBUILT_BRANCH
 
 # git ls-remote --exit-code: 2 = ref absent, anything else non-zero = real
 # failure (network, auth, ...). Only the former may be treated as "missing",

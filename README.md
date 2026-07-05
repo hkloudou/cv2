@@ -50,6 +50,28 @@ Requirements: Go with `CGO_ENABLED=1` and a matching C toolchain. On Windows
 use an MSYS2/MinGW-w64 gcc (POSIX threads variant, which is the MSYS2
 default); the produced `.exe` is fully static (no extra DLLs needed).
 
+## Choosing your OpenCV version
+
+Module versions encode the OpenCV line they were built from:
+
+```
+v0.<code>.<revision>        code = major*10000 + minor*100 + patch
+```
+
+| OpenCV | module versions | pin the line with |
+| --- | --- | --- |
+| 4.8.1 | `v0.40801.N` | `go get github.com/hkloudou/cv2@v0.40801` |
+| 4.12.0 | `v0.41200.N` | `go get github.com/hkloudou/cv2@v0.41200` |
+
+`@v0.40801` is a Go version-prefix query: it resolves to the newest binding
+revision of that OpenCV line, and Go's minimal version selection keeps you
+on it. Switching OpenCV versions is exactly one `go get` — the matching
+prebuilt static libraries come along automatically. Plain `@latest` follows
+the newest OpenCV line. Each line has its own
+`prebuilt/<opencv-version>/<target>` branches, is built from the
+checksum-pinned official source tarball, and passes the same full test
+matrix.
+
 ## How it works (architecture)
 
 The repository is split so that **source stays small and binaries stay out of
@@ -57,15 +79,17 @@ history**, while `go build` still gets everything it needs:
 
 ```
 default branch          source only (Go + C++ wrapper + build scripts) — small forever
-prebuilt/<target>       one branch per platform, force-pushed as a SINGLE commit by CI:
-                          libs/<goos>_<goarch>/   Go module with the static .a files
-                          sdk/                    OpenCV install tree (headers) for
-                                                  incremental wrapper rebuilds
-                          MANIFEST                provenance + cache keys
-tags v0.X.Y             release of the root module
-tags libs/<goos>_<goarch>/v0.X.Y
-                        release of each platform's libs module, pointing into
-                        its prebuilt branch
+prebuilt/<ocv>/<target> one branch per OpenCV version line and platform,
+                        force-pushed as a SINGLE commit by CI:
+                          libs/<goos>_<goarch>/       base Go module (static .a files)
+                          libs/<goos>_<goarch>_f2d/   optional feature-set module
+                          sdk/                        OpenCV install tree (headers) for
+                                                      incremental wrapper rebuilds
+                          MANIFEST                    provenance + cache keys
+tags v0.<code>.N        release of the root module for one OpenCV line
+tags libs/<module>/v0.<code>.N
+                        release of each libs module, pointing into its
+                        prebuilt branch
 ```
 
 The root package selects the right libs module per platform with build tags:
@@ -116,7 +140,7 @@ snapshots alive, and each user downloads a single platform's ~5 MB module.
 | --- | --- | --- |
 | `build-libs` | push touching `build/**` or `wrapper/**`; manual | builds all 6 targets: Linux runners cross-build the Linux and Windows targets (MinGW-w64), a macos-14 runner builds darwin/arm64; force-pushes `prebuilt/*` branches |
 | `test` | every push/PR; after `build-libs` | linux/amd64, windows/amd64 and darwin/arm64 native test runs, linux/386 native run, linux/arm64 run under qemu, windows/386 link check |
-| `release` | manual (`version` input) or committing the version to `RELEASE_VERSION` | tags all `libs/.../vX.Y.Z` modules, pins them in `go.mod`, tags `vX.Y.Z` |
+| `release` | manual (`version` input) or committing the version to `RELEASE_VERSION` | takes `0.<code>.N` (e.g. `0.40801.3` = OpenCV 4.8.1 line), tags every libs module at its `prebuilt/<ocv>/*` head, pins them in `go.mod`, tags `v0.<code>.N` |
 
 ## Local development
 

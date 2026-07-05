@@ -1,18 +1,18 @@
-# Builds the static libraries for every supported platform on plain Linux
-# runners (Windows targets are cross-compiled with MinGW-w64) and force-pushes
-# each result as a single orphan commit to its prebuilt/<target> branch.
+# Builds the static libraries for every supported platform and every OpenCV
+# version line, on plain Linux runners (Windows targets are cross-compiled
+# with MinGW-w64) plus a macos-14 runner for darwin/arm64. Each (version,
+# target) result is force-pushed as a single orphan commit to its
+# prebuilt/<opencv-version>/<target> branch.
 #
 # Two-layer caching keeps this cheap:
-#   - "fixed layer" (OpenCV core+imgproc + zlib): rebuilt only when the
-#     OPENCV_BUILD_KEY changes (build/build.conf, target env, toolchain file);
+#   - "fixed layer" (OpenCV + zlib): rebuilt only when the OPENCV_BUILD_KEY
+#     changes (build/build.conf, target env, toolchain file, version line);
 #     otherwise the SDK stored in the prebuilt branch is reused.
-#   - "moving layer" (libcv2wrapper.a): always rebuilt, takes seconds.
+#   - "moving layer" (wrapper archives): always rebuilt, takes seconds.
 name: build-libs
 
 # Only the default branch may publish prebuilt/* branches: they are shared,
-# force-pushed artifacts, and letting every feature branch overwrite them
-# would clobber the canonical binaries. Update this list if the default
-# branch is ever renamed.
+# force-pushed artifacts. Update this list if the default branch is renamed.
 on:
   push:
     branches:
@@ -39,11 +39,36 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Reads the OpenCV version lines from build.conf so the matrix has a
+  # single source of truth.
+  setup:
+    runs-on: ubuntu-24.04
+    outputs:
+      versions: ${{ steps.v.outputs.versions }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: v
+        run: |
+          set -euo pipefail
+          source build/build.conf
+          versions=$(python3 -c 'import json,sys; print(json.dumps(sys.argv[1:]))' $OPENCV_VERSIONS)
+          echo "versions=$versions" >> "$GITHUB_OUTPUT"
+          echo "OpenCV version lines: $versions"
+
   build:
+    needs: setup
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
       matrix:
+        opencv: ${{ fromJson(needs.setup.outputs.versions) }}
+        target:
+          - linux-amd64
+          - linux-386
+          - linux-arm64
+          - windows-amd64
+          - windows-386
+          - darwin-arm64
         include:
           - target: linux-amd64
             runner: ubuntu-24.04
@@ -57,6 +82,9 @@ jobs:
             runner: ubuntu-24.04
           - target: darwin-arm64
             runner: macos-14
+    env:
+      CV2_OPENCV_VERSION: ${{ matrix.opencv }}
+      TARGET: ${{ matrix.target }}
     steps:
       - uses: actions/checkout@v4
 
@@ -68,7 +96,7 @@ jobs:
             sudo apt-get update
             # shellcheck disable=SC2046
             sudo apt-get install -y --no-install-recommends cmake ninja-build \
-              $(build/ci-apt-packages.sh '${{ matrix.target }}')
+              $(build/ci-apt-packages.sh "$TARGET")
           fi
 
       - name: Decide whether OpenCV needs rebuilding
@@ -77,37 +105,53 @@ jobs:
           FORCE: ${{ inputs.force_opencv_rebuild }}
         run: |
           set -euo pipefail
-          target='${{ matrix.target }}'
-          new_key=$(build/build-key.sh "$target" opencv)
+          branch="prebuilt/$CV2_OPENCV_VERSION/$TARGET"
+          new_key=$(build/build-key.sh "$TARGET" opencv)
           reuse=false
           if [ "${FORCE:-false}" != "true" ] \
-            && git ls-remote --exit-code origin "refs/heads/prebuilt/$target" >/dev/null 2>&1; then
-            git fetch --depth 1 origin "refs/heads/prebuilt/$target"
+            && git ls-remote --exit-code origin "refs/heads/$branch" >/dev/null 2>&1; then
+            git fetch --depth 1 origin "refs/heads/$branch"
             old_key=$(git show FETCH_HEAD:MANIFEST 2>/dev/null | sed -n 's/^OPENCV_BUILD_KEY=//p' || true)
             if [ "$old_key" = "$new_key" ]; then
               reuse=true
             fi
           fi
           echo "reuse=$reuse" >> "$GITHUB_OUTPUT"
-          echo "OpenCV build key: $new_key (reuse=$reuse)"
+          echo "OpenCV build key for $branch: $new_key (reuse=$reuse)"
 
       - name: Restore OpenCV SDK from prebuilt branch
         if: steps.plan.outputs.reuse == 'true'
         run: |
           set -euo pipefail
-          mkdir -p ".work/dist/${{ matrix.target }}"
-          git archive FETCH_HEAD sdk | tar -x -C ".work/dist/${{ matrix.target }}"
-          mv ".work/dist/${{ matrix.target }}/sdk" ".work/dist/${{ matrix.target }}/opencv"
+          mkdir -p ".work/dist/$CV2_OPENCV_VERSION/$TARGET"
+          git archive FETCH_HEAD sdk | tar -x -C ".work/dist/$CV2_OPENCV_VERSION/$TARGET"
+          mv ".work/dist/$CV2_OPENCV_VERSION/$TARGET/sdk" ".work/dist/$CV2_OPENCV_VERSION/$TARGET/opencv"
 
       - name: Build OpenCV (static, minimal module list)
         if: steps.plan.outputs.reuse != 'true'
-        run: build/build-opencv.sh '${{ matrix.target }}'
+        run: build/build-opencv.sh "$TARGET"
 
-      - name: Build wrapper
-        run: build/build-wrapper.sh '${{ matrix.target }}'
+      - name: Build wrappers
+        run: build/build-wrapper.sh "$TARGET"
 
-      - name: Package libs module
-        run: build/package-libs.sh '${{ matrix.target }}'
+      - name: Package libs modules
+        run: build/package-libs.sh "$TARGET"
 
       - name: Push prebuilt branch
-        run: build/push-prebuilt.sh '${{ matrix.target }}'
+        run: build/push-prebuilt.sh "$TARGET"
+
+  # One-time cleanup: remove pre-versioning branch names (prebuilt/<target>).
+  prune-legacy:
+    needs: build
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Delete legacy prebuilt branches
+        run: |
+          set -euo pipefail
+          for t in linux-amd64 linux-386 linux-arm64 windows-amd64 windows-386 darwin-arm64; do
+            if git ls-remote --exit-code origin "refs/heads/prebuilt/$t" >/dev/null 2>&1; then
+              git push origin ":refs/heads/prebuilt/$t"
+              echo "deleted legacy branch prebuilt/$t"
+            fi
+          done
