@@ -32,6 +32,11 @@ typedef void *Cv2Mat;
   // ownership of buf and may free it as soon as the call returns. buf must
   // hold exactly rows*cols*elemSize(type) bytes. Returns NULL if OpenCV
   // rejects the parameters or allocation fails.
+  //
+  // Mat type values on this ABI use the fixed wire encoding (the classic
+  // OpenCV 4.x layout: depth in bits 0-2, channels-1 from bit 3); the
+  // implementation translates to the running line's native encoding
+  // (OpenCV 5 moved CV_CN_SHIFT to 5).
   Cv2Mat Cv2_Mat_NewFromBytes(int rows, int cols, int type, Cv2ByteArray buf);
 
   // Releases a Mat created by Cv2_Mat_New or Cv2_Mat_NewFromBytes.

@@ -62,10 +62,11 @@ Module versions encode the OpenCV line they were built from:
 v0.<code>.<revision>        code = major*10000 + minor*100 + patch
 ```
 
-| OpenCV | module versions | pin the line with |
-| --- | --- | --- |
-| 4.8.1 | `v0.40801.N` | `go get github.com/hkloudou/cv2@v0.40801` |
-| 4.12.0 | `v0.41200.N` | `go get github.com/hkloudou/cv2@v0.41200` |
+| OpenCV | module versions | pin the line with | status |
+| --- | --- | --- | --- |
+| 5.0.0 | `v0.50000.N` | `go get github.com/hkloudou/cv2@v0.50000` | active |
+| 4.12.0 | `v0.41200.N` | `go get github.com/hkloudou/cv2@v0.41200` | active |
+| 4.8.1 | `v0.40801.0` | `go get github.com/hkloudou/cv2@v0.40801` | frozen (tags stay consumable; no further builds or revisions) |
 
 `@v0.40801` is a Go version-prefix query: it resolves to the newest binding
 revision of that OpenCV line, and Go's minimal version selection keeps you
@@ -363,13 +364,16 @@ per line even in principle: users select a line via module versions, the
 import paths are identical, so build tags cannot see the OpenCV version.
 When the lines need different treatment, escalate in this order:
 
-1. Build-layer difference (flags, modules): a `case "$OPENCV_VERSION"` in
-   the env/scripts. Example already in tree: `-DWITH_KLEIDICV=OFF` is a
-   4.10+ knob that 4.8.1 ignores harmlessly.
-2. C++ API difference: preprocessor guards in wrapper/*.cpp
-   (`#if CV_VERSION_MAJOR*10000 + CV_VERSION_MINOR*100 + CV_VERSION_REVISION >= 41000`);
-   the wrapper is compiled once per line against that line's headers, so
-   one source file yields per-line binaries.
+1. Build-layer difference (flags, modules): per-line knobs in build.conf
+   (`OPENCV_MODULES_<code>` overrides the BUILD_LIST — OpenCV 5 renamed
+   features2d to features and moved findHomography into the new geometry
+   module) and feature-set candidate lists that simply carry both
+   generations' archive names side by side.
+2. C++ API difference: preprocessor guards in wrapper/*.cpp; the wrapper
+   is compiled once per line against that line's headers, so one source
+   file yields per-line binaries. First real use: f2d.cpp selects
+   `<opencv2/features.hpp>` + `<opencv2/geometry.hpp>` on
+   `CV_VERSION_MAJOR >= 5` and the classic headers otherwise.
 3. Capability only newer lines can offer: older lines' wrapper returns a
    "not supported on this OpenCV line" error string; the Go API stays
    uniform and reports it at runtime.

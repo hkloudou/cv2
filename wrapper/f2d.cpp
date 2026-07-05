@@ -6,9 +6,20 @@
 
 #include "cv2internal.h"
 
+#include <opencv2/core/version.hpp>
+#include <opencv2/imgproc.hpp>
+
+// OpenCV 5 renamed features2d -> features and moved findHomography/RANSAC
+// into the new geometry module. The 5.x compat headers (features2d.hpp,
+// calib3d.hpp) forward to modules we deliberately do not build (stereo,
+// calib), so include the precise per-generation headers instead.
+#if CV_VERSION_MAJOR >= 5
+#include <opencv2/features.hpp>
+#include <opencv2/geometry.hpp>
+#else
 #include <opencv2/calib3d.hpp>
 #include <opencv2/features2d.hpp>
-#include <opencv2/imgproc.hpp>
+#endif
 
 #include <vector>
 

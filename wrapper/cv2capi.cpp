@@ -9,6 +9,7 @@
 
 #include <opencv2/imgproc.hpp>
 
+#include <cmath>
 #include <cstdlib>
 #include <cstring>
 #include <exception>
@@ -16,6 +17,28 @@
 
 namespace
 {
+  // The Go side speaks a fixed "wire" Mat type encoding - the classic
+  // OpenCV 4.x layout (depth in bits 0-2, channels-1 from bit 3) - so the
+  // same Go binaries work against every OpenCV line. OpenCV 5 changed
+  // CV_CN_SHIFT from 3 to 5, so translate at the boundary.
+  int type_to_native(int wire)
+  {
+#if CV_VERSION_MAJOR >= 5
+    return CV_MAKETYPE(wire & 7, (wire >> 3) + 1);
+#else
+    return wire;
+#endif
+  }
+
+  int type_from_native(int native)
+  {
+#if CV_VERSION_MAJOR >= 5
+    return CV_MAT_DEPTH(native) + ((CV_MAT_CN(native) - 1) << 3);
+#else
+    return native;
+#endif
+  }
+
   // Static fallback used when malloc fails; the error channel must never
   // alias success (NULL). Never passed to free().
   const char kErrorAllocFailed[] = "C++ exception (message lost: allocation failure)";
@@ -72,7 +95,7 @@ Cv2Mat Cv2_Mat_NewFromBytes(int rows, int cols, int type, Cv2ByteArray buf)
     // Mat owns its pixels. The Go garbage collector is therefore free to
     // move or collect the source slice after this call returns. The Go side
     // guarantees buf holds exactly rows*cols*elemSize bytes.
-    const cv::Mat borrowed(rows, cols, type, buf.data);
+    const cv::Mat borrowed(rows, cols, type_to_native(type), buf.data);
     return new cv::Mat(borrowed.clone());
   }
   catch (...)
@@ -126,7 +149,7 @@ int Cv2_Mat_Channels(Cv2Mat m)
 
 int Cv2_Mat_Type(Cv2Mat m)
 {
-  return m == nullptr ? -1 : m->type();
+  return m == nullptr ? -1 : type_from_native(m->type());
 }
 
 char *Cv2_Resize(Cv2Mat src, Cv2Mat dst, int width, int height, int interpolation)
@@ -320,7 +343,22 @@ char *Cv2_GetRotationMatrix2D(double centerX, double centerY, double angle,
   }
   try
   {
-    *out = cv::getRotationMatrix2D(cv::Point2f((float)centerX, (float)centerY), angle, scale);
+    // The documented cv::getRotationMatrix2D closed form (OpenCV 5 moved
+    // the helper into the geometry module, which the base library set
+    // deliberately excludes):
+    //   [  alpha  beta  (1-alpha)*cx - beta*cy ]
+    //   [ -beta   alpha  beta*cx + (1-alpha)*cy ]
+    const double rad = angle * CV_PI / 180.0;
+    const double alpha = std::cos(rad) * scale;
+    const double beta = std::sin(rad) * scale;
+    out->create(2, 3, CV_64F);
+    double *m = out->ptr<double>();
+    m[0] = alpha;
+    m[1] = beta;
+    m[2] = (1 - alpha) * centerX - beta * centerY;
+    m[3] = -beta;
+    m[4] = alpha;
+    m[5] = beta * centerX + (1 - alpha) * centerY;
     return nullptr;
   }
   catch (...)
@@ -369,11 +407,23 @@ char *Cv2_FindExternalContourRects(Cv2Mat src, int **rects, int *count)
     }
     for (size_t i = 0; i < contours.size(); i++)
     {
-      const cv::Rect r = cv::boundingRect(contours[i]);
-      out[i * 4] = r.x;
-      out[i * 4 + 1] = r.y;
-      out[i * 4 + 2] = r.width;
-      out[i * 4 + 3] = r.height;
+      // Tight integer bounding box, the documented cv::boundingRect
+      // semantics, computed by hand: OpenCV 5 moved boundingRect into the
+      // geometry module, which the base library set deliberately excludes.
+      int minX = contours[i][0].x, maxX = minX;
+      int minY = contours[i][0].y, maxY = minY;
+      for (size_t p = 1; p < contours[i].size(); p++)
+      {
+        const cv::Point pt = contours[i][p];
+        if (pt.x < minX) minX = pt.x;
+        if (pt.x > maxX) maxX = pt.x;
+        if (pt.y < minY) minY = pt.y;
+        if (pt.y > maxY) maxY = pt.y;
+      }
+      out[i * 4] = minX;
+      out[i * 4 + 1] = minY;
+      out[i * 4 + 2] = maxX - minX + 1;
+      out[i * 4 + 3] = maxY - minY + 1;
     }
     *rects = out;
     *count = (int)contours.size();

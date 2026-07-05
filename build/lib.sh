@@ -66,6 +66,11 @@ cv2_load_target() {
     ;;
   esac
   OPENCV_CODE=$(cv2_opencv_code "$OPENCV_VERSION")
+  # Per-line BUILD_LIST override (module renames across major versions).
+  local modules_var="OPENCV_MODULES_$OPENCV_CODE"
+  if [ -n "${!modules_var:-}" ]; then
+    OPENCV_MODULES=${!modules_var}
+  fi
   local sha_var="OPENCV_SHA256_$OPENCV_CODE"
   OPENCV_SHA256=${!sha_var:-}
   if [ -z "$OPENCV_SHA256" ]; then

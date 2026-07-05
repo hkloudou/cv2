@@ -17,9 +17,10 @@ fi
 include_root=$(dirname "$(dirname "$core_hpp")")
 
 mkdir -p "$CV2_OBJ_DIR"
+# OpenCV 5 requires C++17; 4.x compiles fine under it too.
 echo "==> Compiling base wrapper with $WRAPPER_CXX"
 # shellcheck disable=SC2086
-"$WRAPPER_CXX" -std=c++11 -O2 $WRAPPER_CXXFLAGS \
+"$WRAPPER_CXX" -std=c++17 -O2 $WRAPPER_CXXFLAGS \
   -I"$include_root" \
   -c "$CV2_ROOT/wrapper/cv2capi.cpp" \
   -o "$CV2_OBJ_DIR/cv2capi.o"
@@ -40,7 +41,7 @@ for set in ${CV2_FEATURE_SETS:-}; do
     obj="$CV2_OBJ_DIR/${set}_$(basename "$src" .cpp).o"
     echo "==> Compiling feature wrapper $src ($set)"
     # shellcheck disable=SC2086
-    "$WRAPPER_CXX" -std=c++11 -O2 $WRAPPER_CXXFLAGS \
+    "$WRAPPER_CXX" -std=c++17 -O2 $WRAPPER_CXXFLAGS \
       -I"$include_root" \
       -c "$CV2_ROOT/wrapper/$src" \
       -o "$obj"

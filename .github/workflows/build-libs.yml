@@ -139,18 +139,29 @@ jobs:
       - name: Push prebuilt branch
         run: build/push-prebuilt.sh "$TARGET"
 
-  # One-time cleanup: remove pre-versioning branch names (prebuilt/<target>).
-  prune-legacy:
+  # Retire prebuilt branches for version lines no longer in OPENCV_VERSIONS
+  # (released tags keep their snapshots reachable forever) and any
+  # pre-versioning flat branch names.
+  prune-retired:
     needs: build
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-      - name: Delete legacy prebuilt branches
+      - name: Delete retired prebuilt branches
         run: |
           set -euo pipefail
-          for t in linux-amd64 linux-386 linux-arm64 windows-amd64 windows-386 darwin-arm64; do
-            if git ls-remote --exit-code origin "refs/heads/prebuilt/$t" >/dev/null 2>&1; then
-              git push origin ":refs/heads/prebuilt/$t"
-              echo "deleted legacy branch prebuilt/$t"
+          source build/build.conf
+          git ls-remote origin 'refs/heads/prebuilt/*' | awk '{print $2}' | while read -r ref; do
+            rest=${ref#refs/heads/prebuilt/}
+            version=${rest%%/*}
+            keep=false
+            if [ "$version" != "$rest" ]; then
+              for v in $OPENCV_VERSIONS; do
+                [ "$version" = "$v" ] && keep=true
+              done
+            fi
+            if [ "$keep" = false ]; then
+              git push origin ":$ref"
+              echo "deleted retired branch ${ref#refs/heads/}"
             fi
           done

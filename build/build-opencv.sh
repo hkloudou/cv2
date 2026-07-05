@@ -72,6 +72,7 @@ cmake -G Ninja -S "$src_tree" -B "$CV2_BUILD_DIR" \
   -DWITH_ADE=OFF \
   -DWITH_ZLIB=ON \
   -DBUILD_ZLIB=ON \
+  -DWITH_ZLIB_NG=OFF \
   -DWITH_JPEG=OFF \
   -DWITH_PNG=OFF \
   -DWITH_TIFF=OFF \
