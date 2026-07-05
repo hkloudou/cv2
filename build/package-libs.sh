@@ -82,6 +82,8 @@ module $module_path
 go 1.24.0
 EOF
 
+abi_hash=$(cv2_abi_hash)
+
 cat >"$out_libs/libs.go" <<EOF
 //go:build $TARGET_GOOS && $TARGET_GOARCH
 
@@ -94,6 +96,10 @@ package libs
 
 /*
 #cgo LDFLAGS: $LIBS_CGO_LDFLAGS
+
+// Link-time pairing handshake: the root package's init references this
+// symbol by name. Mixing library and source generations fails to link.
+void cv2_abi_$abi_hash(void) {}
 */
 import "C"
 EOF
@@ -172,6 +178,9 @@ package libs
 
 /*
 #cgo LDFLAGS: $set_ldflags
+
+// Link-time pairing handshake with the $set subpackage.
+void cv2_${set}_abi_$abi_hash(void) {}
 */
 import "C"
 EOF

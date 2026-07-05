@@ -16,3 +16,10 @@ require (
 	github.com/hkloudou/cv2/libs/windows_amd64 v0.41200.0
 	github.com/hkloudou/cv2/libs/windows_amd64_f2d v0.41200.0
 )
+
+retract (
+	// Bootstrap-era versions predating the OpenCV-encoded version scheme;
+	// their tags were removed. Use the v0.40801.x or v0.41200.x lines.
+	v0.1.0
+	v0.2.0
+)

@@ -15,6 +15,7 @@ package cv2
 
 import (
 	"encoding/binary"
+	"image"
 	"math"
 	"math/rand"
 	"testing"
@@ -279,5 +280,41 @@ func TestParityToBytesRoundTrip(t *testing.T) {
 		if got[i] != src[i] {
 			t.Fatalf("byte %d differs: %d vs %d", i, got[i], src[i])
 		}
+	}
+}
+
+// TestParityToImageRoundTrip: ImageToMatRGBA -> ToImage must reproduce the
+// source image pixel-for-pixel; the gray path must match CvtColor output.
+func TestParityToImageRoundTrip(t *testing.T) {
+	src := noiseBytes(24*16*4, 46)
+	m, err := NewMatFromBytes(16, 24, MatTypeCV8UC4, src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer m.Close()
+
+	img, err := m.ToImage()
+	if err != nil {
+		t.Fatal(err)
+	}
+	rgba, ok := img.(*image.RGBA)
+	if !ok || rgba.Bounds().Dx() != 24 || rgba.Bounds().Dy() != 16 {
+		t.Fatalf("unexpected image %T %v", img, img.Bounds())
+	}
+	for i := range src {
+		if rgba.Pix[i] != src[i] {
+			t.Fatalf("pixel byte %d differs", i)
+		}
+	}
+
+	gray := NewMat()
+	defer gray.Close()
+	CvtColor(m, &gray, ColorRGBAToGray)
+	gimg, err := gray.ToImage()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := gimg.(*image.Gray); !ok {
+		t.Fatalf("gray mat converted to %T, want *image.Gray", gimg)
 	}
 }

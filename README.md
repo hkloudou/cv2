@@ -375,6 +375,25 @@ When the lines need different treatment, escalate in this order:
   matrix entry in both workflows, `libs_<goos>_<goarch>.go` link files in
   the root package and each subpackage, extend the build tags.
 
+### Root-libs pairing: the link-time ABI handshake
+
+Go's MVS guarantees libs versions are AT LEAST the go.mod pins, but has no
+"exactly equal" constraint. The remaining skew direction (manually
+upgrading a libs module past the root) is closed at link time: the root
+package's generated `zz_abi_link.go` calls `cv2_abi_<hash>()` from an
+init, the f2d subpackage calls `cv2_f2d_abi_<hash>()`, and only libs
+modules generated from the same wrapper sources define those symbols
+(`<hash>` = first 12 hex of sha256 over `wrapper/`). Mixing generations
+fails the build with `undefined reference to cv2_abi_<expected-hash>`.
+After any change under `wrapper/`, run `build/gen-abi.sh` and commit the
+regenerated files; CI enforces freshness via `build/gen-abi.sh --check`.
+Note the hash is deliberately line-independent: one source commit serves
+every OpenCV line with one ABI generation.
+
+`go.mod` additionally carries `retract` directives for the bootstrap-era
+v0.1.0/v0.2.0 (their tags are gone; the module proxy still mirrors them,
+and retraction is the mechanism that tells `go` tooling not to pick them).
+
 ### Invariants — do not break these
 
 1. The cgo preambles re-declare the C prototypes: any wrapper ABI change
@@ -398,8 +417,8 @@ When the lines need different treatment, escalate in this order:
 
 ## License
 
-The Go and C++ code in this repository is provided by the repository owner.
-The prebuilt branches redistribute OpenCV binaries under the
+MIT (see `LICENSE`). The prebuilt branches redistribute OpenCV binaries
+under the
 [Apache 2.0 license](https://github.com/opencv/opencv/blob/4.x/LICENSE)
 (a copy ships in every libs module as `LICENSE-OPENCV.txt`) and zlib under
 the zlib license.

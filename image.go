@@ -11,6 +11,29 @@ import (
 // ErrEmptyImage is returned when an image with no pixels is converted.
 var ErrEmptyImage = errors.New("cv2: empty image")
 
+// ToImage converts a Mat back to a Go image: MatTypeCV8UC4 (RGBA byte
+// order, as produced by ImageToMatRGBA) becomes *image.RGBA, and
+// MatTypeCV8UC1 (e.g. a CvtColor gray result) becomes *image.Gray.
+func (m Mat) ToImage() (image.Image, error) {
+	data, err := m.ToBytes()
+	if err != nil {
+		return nil, err
+	}
+	w, h := m.Cols(), m.Rows()
+	switch m.Type() {
+	case MatTypeCV8UC4:
+		img := image.NewRGBA(image.Rect(0, 0, w, h))
+		copy(img.Pix, data)
+		return img, nil
+	case MatTypeCV8UC1:
+		img := image.NewGray(image.Rect(0, 0, w, h))
+		copy(img.Pix, data)
+		return img, nil
+	default:
+		return nil, ErrInvalidMatParams
+	}
+}
+
 // ImageToMatRGBA converts an image.Image to a Mat of type MatTypeCV8UC4
 // (8-bit RGBA). Every input image kind is normalized to RGBA so that two
 // converted images are always directly comparable with MatchTemplate.

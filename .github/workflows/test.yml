@@ -70,6 +70,8 @@ jobs:
               *) exit "$status" ;;
             esac
           fi
+      - name: Check generated ABI handshake files
+        run: build/gen-abi.sh --check
       - name: Test
         if: steps.fetch.outputs.present == 'true'
         run: |
@@ -77,6 +79,24 @@ jobs:
           build/setup-gowork.sh
           go vet ./...
           go test -v ./...
+      - name: AddressSanitizer leak check (wrapper)
+        if: steps.fetch.outputs.present == 'true'
+        run: |
+          set -euo pipefail
+          include_root=$(dirname "$(dirname "$(find .prebuilt -path '*opencv2/core.hpp' | head -1)")")
+          if [ ! -d "$include_root" ]; then
+            # Headers are not shipped in libs modules; take them from the
+            # prebuilt branch sdk instead.
+            git archive FETCH_HEAD sdk/include | tar -x -C .prebuilt
+            include_root=$(dirname "$(dirname "$(find .prebuilt/sdk -path '*opencv2/core.hpp' | head -1)")")
+          fi
+          mkdir -p .work
+          g++ -std=c++11 -O1 -g -fsanitize=address -I "$include_root" \
+            build/asan/leakcheck.cpp \
+            -L .prebuilt/libs/linux_amd64 \
+            -lcv2wrapper -lopencv_imgproc -lopencv_core -lzlib \
+            -lstdc++ -lm -lpthread -ldl -o .work/leakcheck
+          ASAN_OPTIONS=detect_leaks=1 ./.work/leakcheck
 
   # Full test run on native Windows with the same MSYS2 MinGW-w64 toolchain
   # users have. The test step runs inside the MSYS2 MINGW64 shell so its gcc

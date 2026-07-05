@@ -82,6 +82,16 @@ cv2_load_target() {
   CV2_PREBUILT_BRANCH=prebuilt/$OPENCV_VERSION/$target
 }
 
+# cv2_abi_hash: 12-hex digest of the wrapper sources - the ABI generation
+# marker. The root package references C symbols named after it and the
+# generated libs modules define them, so mixing a root module with libs
+# built from a different wrapper generation fails AT LINK TIME with the
+# expected hash in the error message. Line-independent on purpose: both
+# OpenCV lines built from one commit share one ABI generation.
+cv2_abi_hash() {
+  find "$CV2_ROOT/wrapper" -type f | LC_ALL=C sort | xargs cat | cv2_sha256 | cut -c1-12
+}
+
 # cv2_build_key <target> opencv|wrapper
 # Prints a content hash of everything that influences the corresponding
 # build layer. CI skips the expensive OpenCV rebuild when the opencv key

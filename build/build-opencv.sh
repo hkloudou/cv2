@@ -113,6 +113,16 @@ cmake --install "$CV2_BUILD_DIR"
 mkdir -p "$CV2_DIST_DIR/3rdparty-lib"
 find "$CV2_BUILD_DIR/3rdparty" -name '*.a' -exec cp -v {} "$CV2_DIST_DIR/3rdparty-lib/" \;
 
+# Slim the SDK stored on prebuilt branches: the cascade/model data files and
+# sample assets are useless for linking and would add ~10 MB per branch.
+rm -rf "$CV2_DIST_DIR/share/opencv4/haarcascades" \
+  "$CV2_DIST_DIR/share/opencv4/lbpcascades" \
+  "$CV2_DIST_DIR/share/opencv4/quality" \
+  "$CV2_DIST_DIR/share/opencv4/samples" \
+  "$CV2_DIST_DIR/etc/haarcascades" \
+  "$CV2_DIST_DIR/etc/lbpcascades" \
+  "$CV2_DIST_DIR/samples"
+
 cp "$src_tree/LICENSE" "$CV2_DIST_DIR/OPENCV-LICENSE.txt"
 
 echo "==> Done: $CV2_TARGET"
