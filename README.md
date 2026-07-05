@@ -8,9 +8,13 @@ inside a big image") with batteries included:
 
 - **No OpenCV installation required.** Prebuilt static libraries (OpenCV
   `core` + `imgproc` only) are linked into your binary via cgo.
-- **You only download your platform.** Each platform's libraries live in
-  their own Go module; `go build` fetches just the one your target needs
-  (~5 MB compressed), never all of them.
+- **You only link your platform.** Each platform's libraries live in their
+  own Go module. `go build` extracts and compiles against just the one your
+  target needs (~5 MB compressed). The first `go get`/`go mod tidy` also
+  downloads the other platforms' base modules once to record their go.sum
+  checksums (a ~30 MB one-time cost per module cache); optional feature-set
+  modules (like f2d) are never downloaded unless you import the matching
+  subpackage.
 - **All binaries are built by GitHub Actions** from the official OpenCV
   source tarball (checksum-pinned) — nothing is hand-built.
 
@@ -172,6 +176,22 @@ building block for multi-scale matching), `CvtColor`, `GaussianBlur` and
 `Threshold`. All of these run against the same prebuilt libraries — no
 extra downloads.
 
+### API conventions: primitives vs pipelines
+
+The root package and the feature subpackages share one contract language —
+English godoc, panics with `cv2:`-prefixed messages for invalid inputs
+(nil/closed Mats, OpenCV rejections), "not present" is a result rather
+than an error (a low `maxVal` for Match, `Found: false` for f2d), and every
+binding cites the OpenCV documentation entry it wraps. They differ in
+altitude on purpose:
+
+- the root package exposes 1:1 OpenCV primitives (`MatchTemplate`,
+  `Resize`, `CvtColor`, ...) plus the `Match` convenience;
+- feature subpackages expose goal-level pipelines (`f2d.Locate` runs
+  ORB + ratio test + RANSAC homography in a single native call), because
+  shuttling intermediate state (keypoints, matches) across cgo would be
+  slow and error-prone. Tunables travel in an Options struct instead.
+
 ### Optional feature sets (import-driven)
 
 Extra OpenCV capability ships as subpackages backed by their own libs
@@ -189,6 +209,21 @@ if res.Found {
 	fmt.Println("center:", res.Center, "corners:", res.Corners)
 }
 ```
+
+Not importing a feature subpackage isolates you from it at three levels,
+so it can never break or bloat a base-only build:
+
+1. **Source**: `wrapper/*.cpp` is never compiled on user machines at all —
+   CI precompiles it; the `wrapper/` directory contains no Go files, so
+   `go build` ignores it.
+2. **Download**: the feature wrapper archive (`libcv2f2dwrapper.a`) and its
+   OpenCV modules ship only inside the `libs/<goos>_<goarch>_f2d` modules,
+   which are fetched only when the subpackage is imported.
+3. **Link**: without the import there are no `-l` flags for those archives,
+   and static linking additionally prunes at archive-member granularity.
+   Measured on linux/amd64: a Match-only binary is ~7.7 MB; adding
+   `f2d.Locate` brings ~2.7 MB of reachable code (not the full ~9 MB of
+   feature archives).
 
 ## Maintainer guide (for humans and future AIs)
 
