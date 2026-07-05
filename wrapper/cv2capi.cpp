@@ -12,6 +12,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <exception>
+#include <vector>
 
 namespace
 {
@@ -239,6 +240,154 @@ char *Cv2_MinMaxLoc(Cv2Mat m, double *minVal, double *maxVal, Cv2Point *minLoc, 
   {
     return current_exception_message();
   }
+}
+
+char *Cv2_Canny(Cv2Mat src, Cv2Mat dst, double threshold1, double threshold2,
+                int apertureSize, int l2gradient)
+{
+  if (src == nullptr || dst == nullptr)
+  {
+    return copy_error("null Mat handle");
+  }
+  try
+  {
+    cv::Canny(*src, *dst, threshold1, threshold2, apertureSize, l2gradient != 0);
+    return nullptr;
+  }
+  catch (...)
+  {
+    return current_exception_message();
+  }
+}
+
+char *Cv2_GetStructuringElement(int shape, int ksizeW, int ksizeH, Cv2Mat out)
+{
+  if (out == nullptr)
+  {
+    return copy_error("null Mat handle");
+  }
+  try
+  {
+    *out = cv::getStructuringElement(shape, cv::Size(ksizeW, ksizeH));
+    return nullptr;
+  }
+  catch (...)
+  {
+    return current_exception_message();
+  }
+}
+
+char *Cv2_Erode(Cv2Mat src, Cv2Mat dst, Cv2Mat kernel, int iterations)
+{
+  if (src == nullptr || dst == nullptr || kernel == nullptr)
+  {
+    return copy_error("null Mat handle");
+  }
+  try
+  {
+    cv::erode(*src, *dst, *kernel, cv::Point(-1, -1), iterations);
+    return nullptr;
+  }
+  catch (...)
+  {
+    return current_exception_message();
+  }
+}
+
+char *Cv2_Dilate(Cv2Mat src, Cv2Mat dst, Cv2Mat kernel, int iterations)
+{
+  if (src == nullptr || dst == nullptr || kernel == nullptr)
+  {
+    return copy_error("null Mat handle");
+  }
+  try
+  {
+    cv::dilate(*src, *dst, *kernel, cv::Point(-1, -1), iterations);
+    return nullptr;
+  }
+  catch (...)
+  {
+    return current_exception_message();
+  }
+}
+
+char *Cv2_GetRotationMatrix2D(double centerX, double centerY, double angle,
+                              double scale, Cv2Mat out)
+{
+  if (out == nullptr)
+  {
+    return copy_error("null Mat handle");
+  }
+  try
+  {
+    *out = cv::getRotationMatrix2D(cv::Point2f((float)centerX, (float)centerY), angle, scale);
+    return nullptr;
+  }
+  catch (...)
+  {
+    return current_exception_message();
+  }
+}
+
+char *Cv2_WarpAffine(Cv2Mat src, Cv2Mat dst, Cv2Mat m, int width, int height, int flags)
+{
+  if (src == nullptr || dst == nullptr || m == nullptr)
+  {
+    return copy_error("null Mat handle");
+  }
+  try
+  {
+    cv::warpAffine(*src, *dst, *m, cv::Size(width, height), flags);
+    return nullptr;
+  }
+  catch (...)
+  {
+    return current_exception_message();
+  }
+}
+
+char *Cv2_FindExternalContourRects(Cv2Mat src, int **rects, int *count)
+{
+  if (src == nullptr || rects == nullptr || count == nullptr)
+  {
+    return copy_error("null Mat handle");
+  }
+  *rects = nullptr;
+  *count = 0;
+  try
+  {
+    std::vector<std::vector<cv::Point>> contours;
+    cv::findContours(*src, contours, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_SIMPLE);
+    if (contours.empty())
+    {
+      return nullptr;
+    }
+    int *out = static_cast<int *>(std::malloc(contours.size() * 4 * sizeof(int)));
+    if (out == nullptr)
+    {
+      return copy_error("allocation failure");
+    }
+    for (size_t i = 0; i < contours.size(); i++)
+    {
+      const cv::Rect r = cv::boundingRect(contours[i]);
+      out[i * 4] = r.x;
+      out[i * 4 + 1] = r.y;
+      out[i * 4 + 2] = r.width;
+      out[i * 4 + 3] = r.height;
+    }
+    *rects = out;
+    *count = (int)contours.size();
+    return nullptr;
+  }
+  catch (...)
+  {
+    return current_exception_message();
+  }
+}
+
+void Cv2_FreeIntArray(int *arr)
+{
+  std::free(arr);
 }
 
 void Cv2_FreeString(char *s)

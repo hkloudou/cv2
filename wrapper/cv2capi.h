@@ -64,6 +64,32 @@ typedef void *Cv2Mat;
   char *Cv2_Threshold(Cv2Mat src, Cv2Mat dst, double thresh, double maxval,
                       int type, double *computed);
 
+  // cv::Canny on an 8-bit input. Same error contract.
+  char *Cv2_Canny(Cv2Mat src, Cv2Mat dst, double threshold1, double threshold2,
+                  int apertureSize, int l2gradient);
+
+  // cv::getStructuringElement into out. Same error contract.
+  char *Cv2_GetStructuringElement(int shape, int ksizeW, int ksizeH, Cv2Mat out);
+
+  // cv::erode / cv::dilate with the given kernel, default anchor and a
+  // single iteration unless overridden. Same error contract.
+  char *Cv2_Erode(Cv2Mat src, Cv2Mat dst, Cv2Mat kernel, int iterations);
+  char *Cv2_Dilate(Cv2Mat src, Cv2Mat dst, Cv2Mat kernel, int iterations);
+
+  // cv::getRotationMatrix2D into out (a 2x3 CV_64F Mat). Same error contract.
+  char *Cv2_GetRotationMatrix2D(double centerX, double centerY, double angle,
+                                double scale, Cv2Mat out);
+
+  // cv::warpAffine to a width x height destination. Same error contract.
+  char *Cv2_WarpAffine(Cv2Mat src, Cv2Mat dst, Cv2Mat m, int width, int height, int flags);
+
+  // cv::findContours(RETR_EXTERNAL, CHAIN_APPROX_SIMPLE) followed by
+  // cv::boundingRect per contour. On success *rects is a malloc'd array of
+  // 4*count ints (x, y, width, height per contour) to release with
+  // Cv2_FreeIntArray. Same error contract.
+  char *Cv2_FindExternalContourRects(Cv2Mat src, int **rects, int *count);
+  void Cv2_FreeIntArray(int *arr);
+
   // Runs cv::matchTemplate. Returns NULL on success, otherwise a malloc'd
   // error message that the caller must release with Cv2_FreeString.
   char *Cv2_MatchTemplate(Cv2Mat image, Cv2Mat templ, Cv2Mat result, int method, Cv2Mat mask);

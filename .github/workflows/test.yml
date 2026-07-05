@@ -55,21 +55,9 @@ jobs:
           cache: false
       - name: Fetch prebuilt libraries
         id: fetch
-        env:
-          TARGET: linux-amd64
-        run: |
-          set -euo pipefail
-          if build/fetch-prebuilt.sh --require-fresh "$TARGET"; then
-            echo "present=true" >> "$GITHUB_OUTPUT"
-          else
-            status=$?
-            echo "present=false" >> "$GITHUB_OUTPUT"
-            case "$status" in
-              3) echo "::warning::prebuilt/$CV2_OPENCV_VERSION/$TARGET missing; skipping tests (run build-libs first)" ;;
-              4) echo "::warning::prebuilt/$CV2_OPENCV_VERSION/$TARGET stale; tests rerun after build-libs completes" ;;
-              *) exit "$status" ;;
-            esac
-          fi
+        uses: ./.github/actions/fetch-prebuilt
+        with:
+          target: linux-amd64
       - name: Check generated ABI handshake files
         run: build/gen-abi.sh --check
       - name: Test
@@ -126,22 +114,9 @@ jobs:
           install: mingw-w64-x86_64-gcc
       - name: Fetch prebuilt libraries
         id: fetch
-        shell: bash
-        env:
-          TARGET: windows-amd64
-        run: |
-          set -euo pipefail
-          if build/fetch-prebuilt.sh --require-fresh "$TARGET"; then
-            echo "present=true" >> "$GITHUB_OUTPUT"
-          else
-            status=$?
-            echo "present=false" >> "$GITHUB_OUTPUT"
-            case "$status" in
-              3) echo "::warning::prebuilt/$CV2_OPENCV_VERSION/$TARGET missing; skipping tests (run build-libs first)" ;;
-              4) echo "::warning::prebuilt/$CV2_OPENCV_VERSION/$TARGET stale; tests rerun after build-libs completes" ;;
-              *) exit "$status" ;;
-            esac
-          fi
+        uses: ./.github/actions/fetch-prebuilt
+        with:
+          target: windows-amd64
       - name: Test
         if: steps.fetch.outputs.present == 'true'
         shell: msys2 {0}
@@ -171,21 +146,9 @@ jobs:
           cache: false
       - name: Fetch prebuilt libraries
         id: fetch
-        env:
-          TARGET: darwin-arm64
-        run: |
-          set -euo pipefail
-          if build/fetch-prebuilt.sh --require-fresh "$TARGET"; then
-            echo "present=true" >> "$GITHUB_OUTPUT"
-          else
-            status=$?
-            echo "present=false" >> "$GITHUB_OUTPUT"
-            case "$status" in
-              3) echo "::warning::prebuilt/$CV2_OPENCV_VERSION/$TARGET missing; skipping tests (run build-libs first)" ;;
-              4) echo "::warning::prebuilt/$CV2_OPENCV_VERSION/$TARGET stale; tests rerun after build-libs completes" ;;
-              *) exit "$status" ;;
-            esac
-          fi
+        uses: ./.github/actions/fetch-prebuilt
+        with:
+          target: darwin-arm64
       - name: Test
         if: steps.fetch.outputs.present == 'true'
         run: |
@@ -236,19 +199,9 @@ jobs:
             $(build/ci-apt-packages.sh "$TARGET") $extra
       - name: Fetch prebuilt libraries
         id: fetch
-        run: |
-          set -euo pipefail
-          if build/fetch-prebuilt.sh --require-fresh "$TARGET"; then
-            echo "present=true" >> "$GITHUB_OUTPUT"
-          else
-            status=$?
-            echo "present=false" >> "$GITHUB_OUTPUT"
-            case "$status" in
-              3) echo "::warning::prebuilt/$CV2_OPENCV_VERSION/$TARGET missing; skipping (run build-libs first)" ;;
-              4) echo "::warning::prebuilt/$CV2_OPENCV_VERSION/$TARGET stale; rerun happens after build-libs completes" ;;
-              *) exit "$status" ;;
-            esac
-          fi
+        uses: ./.github/actions/fetch-prebuilt
+        with:
+          target: ${{ matrix.target }}
       - name: Build test binaries
         if: steps.fetch.outputs.present == 'true'
         run: |
@@ -258,7 +211,8 @@ jobs:
           export CGO_ENABLED=1 GOOS=$TARGET_GOOS GOARCH=$TARGET_GOARCH CC=$CROSS_CC
           go test -c -o .work/cv2.test .
           go test -c -o .work/f2d.test ./f2d
-          ls -la .work/cv2.test .work/f2d.test
+          go test -c -o .work/qr.test ./qr
+          ls -la .work/cv2.test .work/f2d.test .work/qr.test
       - name: Run test binaries
         if: steps.fetch.outputs.present == 'true' && matrix.run != 'none'
         run: |
@@ -267,9 +221,11 @@ jobs:
             native)
               ./.work/cv2.test -test.v
               ./.work/f2d.test -test.v
+              ./.work/qr.test -test.v
               ;;
             qemu-aarch64)
               qemu-aarch64-static -L /usr/aarch64-linux-gnu ./.work/cv2.test -test.v
               qemu-aarch64-static -L /usr/aarch64-linux-gnu ./.work/f2d.test -test.v
+              qemu-aarch64-static -L /usr/aarch64-linux-gnu ./.work/qr.test -test.v
               ;;
           esac

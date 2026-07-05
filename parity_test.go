@@ -242,7 +242,7 @@ func TestParityMinMaxLoc(t *testing.T) {
 	for i := range src {
 		src[i] = 100
 	}
-	src[3*w+7] = 2   // unique minimum at (7, 3)
+	src[3*w+7] = 2    // unique minimum at (7, 3)
 	src[6*w+11] = 250 // unique maximum at (11, 6)
 
 	m, err := NewMatFromBytes(h, w, MatTypeCV8UC1, src)
@@ -316,5 +316,180 @@ func TestParityToImageRoundTrip(t *testing.T) {
 	}
 	if _, ok := gimg.(*image.Gray); !ok {
 		t.Fatalf("gray mat converted to %T, want *image.Gray", gimg)
+	}
+}
+
+// TestParityErodeDilate3x3: morphology with a 3x3 rectangular kernel is a
+// plain min (erode) / max (dilate) filter; interior pixels are checked
+// byte-exactly against that definition (official semantics per
+// modules/imgproc/src/morph.dispatch.cpp).
+func TestParityErodeDilate3x3(t *testing.T) {
+	const w, h = 15, 11
+	src := noiseBytes(w*h, 47)
+	m, err := NewMatFromBytes(h, w, MatTypeCV8UC1, src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer m.Close()
+
+	kernel := GetStructuringElement(MorphRect, 3, 3)
+	defer kernel.Close()
+	eroded := NewMat()
+	defer eroded.Close()
+	dilated := NewMat()
+	defer dilated.Close()
+	Erode(m, &eroded, kernel, 1)
+	Dilate(m, &dilated, kernel, 1)
+
+	er, err := eroded.ToBytes()
+	if err != nil {
+		t.Fatal(err)
+	}
+	di, err := dilated.ToBytes()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for y := 1; y < h-1; y++ {
+		for x := 1; x < w-1; x++ {
+			mn, mx := byte(255), byte(0)
+			for dy := -1; dy <= 1; dy++ {
+				for dx := -1; dx <= 1; dx++ {
+					v := src[(y+dy)*w+x+dx]
+					if v < mn {
+						mn = v
+					}
+					if v > mx {
+						mx = v
+					}
+				}
+			}
+			if er[y*w+x] != mn {
+				t.Fatalf("erode(%d,%d) = %d, reference min %d", x, y, er[y*w+x], mn)
+			}
+			if di[y*w+x] != mx {
+				t.Fatalf("dilate(%d,%d) = %d, reference max %d", x, y, di[y*w+x], mx)
+			}
+		}
+	}
+}
+
+// TestParityWarpAffine180: rotating 180 degrees about the exact image
+// center with INTER_NEAREST is the mapping dst(x,y) = src(w-1-x, h-1-y),
+// byte-exact (semantics per modules/imgproc/test/test_imgwarp.cpp).
+func TestParityWarpAffine180(t *testing.T) {
+	const w, h = 12, 9
+	src := noiseBytes(w*h*4, 48)
+	m, err := NewMatFromBytes(h, w, MatTypeCV8UC4, src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer m.Close()
+
+	rot := GetRotationMatrix2D(float64(w-1)/2, float64(h-1)/2, 180, 1)
+	defer rot.Close()
+	dst := NewMat()
+	defer dst.Close()
+	WarpAffine(m, &dst, rot, w, h, InterpolationNearestNeighbor)
+
+	got, err := dst.ToBytes()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for y := 0; y < h; y++ {
+		for x := 0; x < w; x++ {
+			for c := 0; c < 4; c++ {
+				want := src[((h-1-y)*w+(w-1-x))*4+c]
+				if got[(y*w+x)*4+c] != want {
+					t.Fatalf("warp(%d,%d)[%d] = %d, want %d", x, y, c, got[(y*w+x)*4+c], want)
+				}
+			}
+		}
+	}
+}
+
+// TestParityCannyStructure: a filled bright square on black must produce
+// edges only in a narrow band around the square's border and nothing in
+// flat regions (structural expectations of test_canny.cpp).
+func TestParityCannyStructure(t *testing.T) {
+	const w, h = 64, 48
+	src := make([]byte, w*h)
+	for y := 12; y < 36; y++ {
+		for x := 16; x < 48; x++ {
+			src[y*w+x] = 220
+		}
+	}
+	m, err := NewMatFromBytes(h, w, MatTypeCV8UC1, src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer m.Close()
+
+	edges := NewMat()
+	defer edges.Close()
+	Canny(m, &edges, 50, 150)
+
+	got, err := edges.ToBytes()
+	if err != nil {
+		t.Fatal(err)
+	}
+	edgeCount := 0
+	for y := 0; y < h; y++ {
+		for x := 0; x < w; x++ {
+			if got[y*w+x] == 0 {
+				continue
+			}
+			edgeCount++
+			nearVertical := (x >= 14 && x <= 18 || x >= 45 && x <= 49) && y >= 10 && y <= 37
+			nearHorizontal := (y >= 10 && y <= 14 || y >= 33 && y <= 37) && x >= 14 && x <= 49
+			if !nearVertical && !nearHorizontal {
+				t.Fatalf("edge pixel at (%d,%d) far from the square border", x, y)
+			}
+		}
+	}
+	if edgeCount < 80 {
+		t.Fatalf("only %d edge pixels; the square border should produce ~2 sides * perimeter", edgeCount)
+	}
+}
+
+// TestParityFindExternalContourRects: two disjoint filled rectangles in a
+// binary image must yield exactly their bounding boxes
+// (modules/imgproc/test/test_contours.cpp semantics).
+func TestParityFindExternalContourRects(t *testing.T) {
+	const w, h = 60, 40
+	src := make([]byte, w*h)
+	fill := func(x0, y0, x1, y1 int) {
+		for y := y0; y < y1; y++ {
+			for x := x0; x < x1; x++ {
+				src[y*w+x] = 255
+			}
+		}
+	}
+	fill(5, 6, 20, 18)
+	fill(30, 22, 52, 36)
+
+	m, err := NewMatFromBytes(h, w, MatTypeCV8UC1, src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer m.Close()
+
+	rects := FindExternalContourRects(m)
+	if len(rects) != 2 {
+		t.Fatalf("found %d rects, want 2: %v", len(rects), rects)
+	}
+	want := map[image.Rectangle]bool{
+		image.Rect(5, 6, 20, 18):   false,
+		image.Rect(30, 22, 52, 36): false,
+	}
+	for _, r := range rects {
+		if _, ok := want[r]; !ok {
+			t.Fatalf("unexpected rect %v", r)
+		}
+		want[r] = true
+	}
+	for r, seen := range want {
+		if !seen {
+			t.Fatalf("rect %v not found", r)
+		}
 	}
 }

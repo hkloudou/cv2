@@ -1,0 +1,38 @@
+name: fetch-prebuilt
+description: >-
+  Fetch the CI-built libs modules for a target from its
+  prebuilt/<opencv-version>/<target> branch. Missing branch (bootstrap) and
+  stale wrapper generation both surface as present=false with a warning so
+  callers can skip instead of failing; real git errors still fail the step.
+  Reads CV2_OPENCV_VERSION from the job environment.
+
+inputs:
+  target:
+    description: Build target, e.g. linux-amd64
+    required: true
+
+outputs:
+  present:
+    description: '"true" when fresh libraries were fetched'
+    value: ${{ steps.fetch.outputs.present }}
+
+runs:
+  using: composite
+  steps:
+    - id: fetch
+      shell: bash
+      env:
+        TARGET: ${{ inputs.target }}
+      run: |
+        set -euo pipefail
+        if build/fetch-prebuilt.sh --require-fresh "$TARGET"; then
+          echo "present=true" >> "$GITHUB_OUTPUT"
+        else
+          status=$?
+          echo "present=false" >> "$GITHUB_OUTPUT"
+          case "$status" in
+            3) echo "::warning::prebuilt/$CV2_OPENCV_VERSION/$TARGET missing; skipping (run build-libs first)" ;;
+            4) echo "::warning::prebuilt/$CV2_OPENCV_VERSION/$TARGET stale; tests rerun after build-libs completes" ;;
+            *) exit "$status" ;;
+          esac
+        fi

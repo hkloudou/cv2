@@ -170,11 +170,25 @@ panics if an image is empty or OpenCV rejects the inputs (e.g. the template
 is wider but shorter than the image).
 
 Lower-level pieces are exported too for custom pipelines: `Mat` (with
-`Rows`/`Cols`/`Channels`/`Type`), `NewMatFromBytes`, `ImageToMatRGBA`,
-`MatchTemplate`, `MinMaxLoc`, plus imgproc primitives `Resize` (the
-building block for multi-scale matching), `CvtColor`, `GaussianBlur` and
-`Threshold`. All of these run against the same prebuilt libraries — no
-extra downloads.
+`Rows`/`Cols`/`Channels`/`Type`, `ToBytes`, `ToImage`), `NewMatFromBytes`,
+`ImageToMatRGBA`, `MatchTemplate`, `MinMaxLoc`, plus imgproc primitives:
+`Resize` (the building block for multi-scale matching), `CvtColor`,
+`GaussianBlur`, `Threshold`, `Canny`, `Erode`/`Dilate` (with
+`GetStructuringElement`), `WarpAffine`/`GetRotationMatrix2D`, and
+`FindExternalContourRects`. All of these run against the same prebuilt
+base libraries — no extra downloads.
+
+### Testing principle
+
+The official OpenCV implementation is assumed correct and serves as ground
+truth. Tests exist to prove the BINDING layer is a faithful pass-through
+(parameter order, type mapping, memory marshalling), never to re-verify
+OpenCV itself. Concretely: parity tests reproduce the reference
+computations OpenCV's own accuracy tests use (with citations into the
+OpenCV tree), and where OpenCV offers both directions of an operation the
+tests go OpenCV-vs-OpenCV (the qr package round-trips
+`cv::QRCodeEncoder` -> `cv::QRCodeDetector` through the Go surface).
+Every new binding must come with such a test.
 
 ### API conventions: primitives vs pipelines
 
@@ -208,6 +222,15 @@ res := f2d.Locate(screenshot, button)
 if res.Found {
 	fmt.Println("center:", res.Center, "corners:", res.Corners)
 }
+```
+
+```go
+import "github.com/hkloudou/cv2/qr"
+
+// QR encode/decode via the official cv::QRCodeEncoder/cv::QRCodeDetector
+// (OpenCV objdetect + its dependency closure, fetched only when imported):
+img, _ := qr.Encode("https://example.com", 4, 4)
+codes := qr.Decode(screenshot) // every QR in the image, with corners
 ```
 
 Not importing a feature subpackage isolates you from it at three levels,
