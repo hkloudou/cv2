@@ -251,6 +251,12 @@ tags                 v0.<code>.N            root module release of one OpenCV li
                                             prebuilt branch commit that was released.
                      Tags are immutable: never delete or move a published tag
                      (the Go module proxy has already mirrored it). Fixes = new N.
+
+                     Expected GitHub UI note: libs tag commits show "This
+                     commit does not belong to any branch" - correct by
+                     design. Prebuilt branches are rolling force-pushed
+                     pointers; released snapshots are anchored by their tags
+                     alone, and Go tooling resolves versions via tags only.
 ```
 
 ### Version scheme
