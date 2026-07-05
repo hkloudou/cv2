@@ -37,6 +37,28 @@ typedef void *Cv2Mat;
   // Releases a Mat created by Cv2_Mat_New or Cv2_Mat_NewFromBytes.
   void Cv2_Mat_Close(Cv2Mat m);
 
+  // Shape accessors. Return -1 when m is NULL.
+  int Cv2_Mat_Rows(Cv2Mat m);
+  int Cv2_Mat_Cols(Cv2Mat m);
+  int Cv2_Mat_Channels(Cv2Mat m);
+  int Cv2_Mat_Type(Cv2Mat m);
+
+  // cv::resize to width x height. Returns NULL on success, otherwise a
+  // malloc'd error message to release with Cv2_FreeString.
+  char *Cv2_Resize(Cv2Mat src, Cv2Mat dst, int width, int height, int interpolation);
+
+  // cv::cvtColor. Same error contract as Cv2_Resize.
+  char *Cv2_CvtColor(Cv2Mat src, Cv2Mat dst, int code);
+
+  // cv::GaussianBlur with a ksizeW x ksizeH kernel. Same error contract.
+  char *Cv2_GaussianBlur(Cv2Mat src, Cv2Mat dst, int ksizeW, int ksizeH,
+                         double sigmaX, double sigmaY);
+
+  // cv::threshold; the effective threshold (useful with OTSU/TRIANGLE) is
+  // written to computed. Same error contract.
+  char *Cv2_Threshold(Cv2Mat src, Cv2Mat dst, double thresh, double maxval,
+                      int type, double *computed);
+
   // Runs cv::matchTemplate. Returns NULL on success, otherwise a malloc'd
   // error message that the caller must release with Cv2_FreeString.
   char *Cv2_MatchTemplate(Cv2Mat image, Cv2Mat templ, Cv2Mat result, int method, Cv2Mat mask);

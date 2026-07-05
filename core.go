@@ -22,6 +22,10 @@ typedef void *Cv2Mat;
 extern Cv2Mat Cv2_Mat_New(void);
 extern Cv2Mat Cv2_Mat_NewFromBytes(int rows, int cols, int type, Cv2ByteArray buf);
 extern void Cv2_Mat_Close(Cv2Mat m);
+extern int Cv2_Mat_Rows(Cv2Mat m);
+extern int Cv2_Mat_Cols(Cv2Mat m);
+extern int Cv2_Mat_Channels(Cv2Mat m);
+extern int Cv2_Mat_Type(Cv2Mat m);
 extern char *Cv2_MatchTemplate(Cv2Mat image, Cv2Mat templ, Cv2Mat result, int method, Cv2Mat mask);
 extern char *Cv2_MinMaxLoc(Cv2Mat m, double *minVal, double *maxVal, Cv2Point *minLoc, Cv2Point *maxLoc);
 extern void Cv2_FreeString(char *s);
@@ -92,6 +96,26 @@ func (m *Mat) Close() error {
 		m.p = nil
 	}
 	return nil
+}
+
+// Rows returns the number of rows, or -1 for a closed or zero-value Mat.
+func (m Mat) Rows() int {
+	return int(C.Cv2_Mat_Rows(m.p))
+}
+
+// Cols returns the number of columns, or -1 for a closed or zero-value Mat.
+func (m Mat) Cols() int {
+	return int(C.Cv2_Mat_Cols(m.p))
+}
+
+// Channels returns the channel count, or -1 for a closed or zero-value Mat.
+func (m Mat) Channels() int {
+	return int(C.Cv2_Mat_Channels(m.p))
+}
+
+// Type returns the OpenCV type code, or -1 for a closed or zero-value Mat.
+func (m Mat) Type() MatType {
+	return MatType(C.Cv2_Mat_Type(m.p))
 }
 
 // takeError converts a C error message (or NULL) into a Go error,

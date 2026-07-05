@@ -85,6 +85,96 @@ void Cv2_Mat_Close(Cv2Mat m)
   delete m;
 }
 
+int Cv2_Mat_Rows(Cv2Mat m)
+{
+  return m == nullptr ? -1 : m->rows;
+}
+
+int Cv2_Mat_Cols(Cv2Mat m)
+{
+  return m == nullptr ? -1 : m->cols;
+}
+
+int Cv2_Mat_Channels(Cv2Mat m)
+{
+  return m == nullptr ? -1 : m->channels();
+}
+
+int Cv2_Mat_Type(Cv2Mat m)
+{
+  return m == nullptr ? -1 : m->type();
+}
+
+char *Cv2_Resize(Cv2Mat src, Cv2Mat dst, int width, int height, int interpolation)
+{
+  if (src == nullptr || dst == nullptr)
+  {
+    return copy_error("null Mat handle");
+  }
+  try
+  {
+    cv::resize(*src, *dst, cv::Size(width, height), 0, 0, interpolation);
+    return nullptr;
+  }
+  catch (...)
+  {
+    return current_exception_message();
+  }
+}
+
+char *Cv2_CvtColor(Cv2Mat src, Cv2Mat dst, int code)
+{
+  if (src == nullptr || dst == nullptr)
+  {
+    return copy_error("null Mat handle");
+  }
+  try
+  {
+    cv::cvtColor(*src, *dst, code);
+    return nullptr;
+  }
+  catch (...)
+  {
+    return current_exception_message();
+  }
+}
+
+char *Cv2_GaussianBlur(Cv2Mat src, Cv2Mat dst, int ksizeW, int ksizeH,
+                       double sigmaX, double sigmaY)
+{
+  if (src == nullptr || dst == nullptr)
+  {
+    return copy_error("null Mat handle");
+  }
+  try
+  {
+    cv::GaussianBlur(*src, *dst, cv::Size(ksizeW, ksizeH), sigmaX, sigmaY);
+    return nullptr;
+  }
+  catch (...)
+  {
+    return current_exception_message();
+  }
+}
+
+char *Cv2_Threshold(Cv2Mat src, Cv2Mat dst, double thresh, double maxval,
+                    int type, double *computed)
+{
+  if (src == nullptr || dst == nullptr || computed == nullptr)
+  {
+    return copy_error("null Mat handle");
+  }
+  try
+  {
+    *computed = cv::threshold(*src, *dst, thresh, maxval, type);
+    return nullptr;
+  }
+  catch (...)
+  {
+    return current_exception_message();
+  }
+}
+
 char *Cv2_MatchTemplate(Cv2Mat image, Cv2Mat templ, Cv2Mat result, int method, Cv2Mat mask)
 {
   // A NULL dereference is a hardware fault, not a C++ exception; check

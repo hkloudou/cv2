@@ -141,9 +141,12 @@ Runs `TM_CCOEFF_NORMED` template matching and returns
 panics if an image is empty or OpenCV rejects the inputs (e.g. the template
 is wider but shorter than the image).
 
-Lower-level pieces are exported too (`Mat`, `NewMatFromBytes`,
-`ImageToMatRGBA`, `MatchTemplate`, `MinMaxLoc`, `TemplateMatchMode`) for
-custom pipelines.
+Lower-level pieces are exported too for custom pipelines: `Mat` (with
+`Rows`/`Cols`/`Channels`/`Type`), `NewMatFromBytes`, `ImageToMatRGBA`,
+`MatchTemplate`, `MinMaxLoc`, plus imgproc primitives `Resize` (the
+building block for multi-scale matching), `CvtColor`, `GaussianBlur` and
+`Threshold`. All of these run against the same prebuilt libraries — no
+extra downloads.
 
 ## License
 
