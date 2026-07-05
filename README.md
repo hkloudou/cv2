@@ -384,6 +384,43 @@ When the lines need different treatment, escalate in this order:
    all lines by the same matrix, with WRAPPER_KEY anchoring both lines'
    binaries to one source commit.
 
+### OpenCV 5.0 absorption inventory (what the wrapper hides, and how)
+
+OpenCV 5.0 is a major-version break. Every incompatibility is absorbed at
+the build or wrapper layer so the Go API — including the numeric values of
+its constants — is byte-for-byte identical on every line. The complete
+list, for anyone adding code that must stay line-portable:
+
+- **Mat type encoding.** 5.0 moved `CV_CN_SHIFT` from 3 to 5, changing the
+  numeric value of every multi-channel type (`CV_8UC4`: 24 -> 96). This ABI
+  pins the classic 4.x layout as its wire format (Go's `MatType` constants
+  never change); `type_to_native()` / `type_from_native()` in
+  wrapper/cv2capi.cpp translate at the boundary. Any new wrapper entry that
+  accepts or returns a Mat type MUST route it through those helpers.
+- **Module split.** `features2d` became `features`; `calib3d` split into
+  `calib`, `stereo` and `geometry` (`findHomography` now lives in
+  geometry). Handled by `OPENCV_MODULES_50000` in build.conf, per-set lib
+  candidate lists that carry both generations' archive names, and
+  `CV_VERSION_MAJOR >= 5` include guards in wrapper/f2d.cpp.
+- **`cv::boundingRect` / `cv::getRotationMatrix2D` moved to geometry.**
+  The base feature set must not drag in a whole module for two small
+  functions, so wrapper/cv2capi.cpp implements both by hand (a min/max
+  scan and the documented closed-form rotation matrix) with parity tests
+  against the official results on the 4.x lines.
+- **Constructor validation.** OpenCV 4.x throws on `cv::Mat(-1, 10, ...)`;
+  5.0 silently builds a degenerate header whose `total()` underflows.
+  `Cv2_Mat_NewFromBytes` therefore validates dimensions and exact buffer
+  length itself instead of relying on the constructor, so invalid
+  parameters yield NULL identically on every line. Lesson generalized:
+  never let "OpenCV will throw" be the only guard on an ABI contract —
+  what throws differs between lines.
+- **C++17.** OpenCV 5.0 requires it; the wrapper is compiled with
+  `-std=c++17` for ALL lines so one flag set serves every build.
+- **Windows link closure.** 5.0's core references `CoCreateGuid`
+  (cv::tempfile), so the windows target envs append `-lole32` to
+  `LIBS_CGO_LDFLAGS`. Harmless on 4.x; users notice nothing because cgo
+  LDFLAGS travel with the libs modules.
+
 ### Extension recipes
 
 - New exported function from an already-built module: add `Cv2_*` to

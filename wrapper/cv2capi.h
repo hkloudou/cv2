@@ -30,8 +30,11 @@ typedef void *Cv2Mat;
 
   // Creates a Mat that owns a private copy of buf. The caller keeps
   // ownership of buf and may free it as soon as the call returns. buf must
-  // hold exactly rows*cols*elemSize(type) bytes. Returns NULL if OpenCV
-  // rejects the parameters or allocation fails.
+  // hold exactly rows*cols*elemSize(type) bytes. Returns NULL when rows or
+  // cols is not positive, buf does not hold exactly that many bytes, OpenCV
+  // rejects the parameters, or allocation fails. The validation is explicit
+  // in the wrapper because the OpenCV lines disagree on it (4.x throws on
+  // negative dimensions, 5.0 accepts a degenerate header).
   //
   // Mat type values on this ABI use the fixed wire encoding (the classic
   // OpenCV 4.x layout: depth in bits 0-2, channels-1 from bit 3); the

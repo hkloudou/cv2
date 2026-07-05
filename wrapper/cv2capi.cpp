@@ -89,13 +89,27 @@ Cv2Mat Cv2_Mat_New(void)
 
 Cv2Mat Cv2_Mat_NewFromBytes(int rows, int cols, int type, Cv2ByteArray buf)
 {
+  // Validate here instead of relying on the cv::Mat constructor: the lines
+  // disagree (OpenCV 4.x throws on negative dimensions, 5.0 silently builds
+  // a degenerate header whose total() underflows), and this ABI promises
+  // NULL whenever the parameters do not describe exactly buf.length bytes.
+  if (rows <= 0 || cols <= 0 || buf.data == nullptr || buf.length <= 0)
+  {
+    return nullptr;
+  }
   try
   {
+    const int native = type_to_native(type);
+    const long long need =
+        (long long)rows * (long long)cols * (long long)CV_ELEM_SIZE(native);
+    if (need != (long long)buf.length)
+    {
+      return nullptr;
+    }
     // Wrap the caller's buffer without copying, then clone so the returned
     // Mat owns its pixels. The Go garbage collector is therefore free to
-    // move or collect the source slice after this call returns. The Go side
-    // guarantees buf holds exactly rows*cols*elemSize bytes.
-    const cv::Mat borrowed(rows, cols, type_to_native(type), buf.data);
+    // move or collect the source slice after this call returns.
+    const cv::Mat borrowed(rows, cols, native, buf.data);
     return new cv::Mat(borrowed.clone());
   }
   catch (...)
