@@ -292,6 +292,30 @@ affected lines/targets only.
 5. Bootstrap-from-zero: push source -> build-libs populates branches ->
    release. Nothing else is stateful.
 
+### Version-line divergence policy (single branch until proven otherwise)
+
+All OpenCV lines build from ONE source branch. The Go sources cannot vary
+per line even in principle: users select a line via module versions, the
+import paths are identical, so build tags cannot see the OpenCV version.
+When the lines need different treatment, escalate in this order:
+
+1. Build-layer difference (flags, modules): a `case "$OPENCV_VERSION"` in
+   the env/scripts. Example already in tree: `-DWITH_KLEIDICV=OFF` is a
+   4.10+ knob that 4.8.1 ignores harmlessly.
+2. C++ API difference: preprocessor guards in wrapper/*.cpp
+   (`#if CV_VERSION_MAJOR*10000 + CV_VERSION_MINOR*100 + CV_VERSION_REVISION >= 41000`);
+   the wrapper is compiled once per line against that line's headers, so
+   one source file yields per-line binaries.
+3. Capability only newer lines can offer: older lines' wrapper returns a
+   "not supported on this OpenCV line" error string; the Go API stays
+   uniform and reports it at runtime.
+4. Only if the GO API ITSELF must fork (realistically: OpenCV 5.x breaking
+   changes): open a maintenance branch per line, add it to the workflow
+   branch filters, and accept the cherry-pick cost. Do not do this
+   preemptively - a single branch keeps every fix landing once, tested on
+   all lines by the same matrix, with WRAPPER_KEY anchoring both lines'
+   binaries to one source commit.
+
 ### Extension recipes
 
 - New exported function from an already-built module: add `Cv2_*` to
