@@ -83,13 +83,15 @@ jobs:
         if: steps.fetch.outputs.present == 'true'
         run: |
           set -euo pipefail
-          include_root=$(dirname "$(dirname "$(find .prebuilt -path '*opencv2/core.hpp' | head -1)")")
-          if [ ! -d "$include_root" ]; then
-            # Headers are not shipped in libs modules; take them from the
-            # prebuilt branch sdk instead.
+          # Headers are not shipped in libs modules; take them from the
+          # prebuilt branch sdk (FETCH_HEAD still points at it from the
+          # fetch step).
+          hpp=$(find .prebuilt -path '*opencv2/core.hpp' | head -1 || true)
+          if [ -z "$hpp" ]; then
             git archive FETCH_HEAD sdk/include | tar -x -C .prebuilt
-            include_root=$(dirname "$(dirname "$(find .prebuilt/sdk -path '*opencv2/core.hpp' | head -1)")")
+            hpp=$(find .prebuilt/sdk -path '*opencv2/core.hpp' | head -1)
           fi
+          include_root=$(dirname "$(dirname "$hpp")")
           mkdir -p .work
           g++ -std=c++11 -O1 -g -fsanitize=address -I "$include_root" \
             build/asan/leakcheck.cpp \
